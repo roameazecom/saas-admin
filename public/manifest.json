@@ -1,0 +1,24 @@
+{
+  "short_name": "AppThat POS",
+  "name": "AppThat Point of Sale",
+  "description": "Modern Restaurant POS System - Orders, Kitchen Display & Billing",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#1e293b",
+  "theme_color": "#f97316",
+  "display": "standalone",
+  "orientation": "any"
+}

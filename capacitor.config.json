@@ -1,0 +1,9 @@
+{
+  "appId": "com.appthat.pos",
+  "appName": "POS App",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true
+  }
+}
