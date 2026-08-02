@@ -12,9 +12,8 @@ const getApiUrl = () => {
     let base = saved;
     if (!base) {
       const hostname = window.location.hostname;
-      const port = window.location.port;
       if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
-        base = `http://${hostname}${port ? ':' + port : ''}`;
+        base = `http://${hostname}:5000`;
       } else {
         base = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
       }
