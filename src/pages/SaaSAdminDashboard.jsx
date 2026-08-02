@@ -1615,9 +1615,9 @@ export default function SaaSAdminDashboard() {
                 </pre>
               </div>
 
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-                <p className="text-xs text-amber-300 font-bold">
-                  ⚠️ Important: Update <span className="font-mono bg-slate-800 px-1 rounded">DB_PASSWORD</span> with the actual MySQL password on the restaurant's machine before using this config.
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                <p className="text-xs text-emerald-300 font-bold">
+                  💡 Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.
                 </p>
               </div>
             </div>
