@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Shield, Users, Building2, Plus, Edit3, Trash2, CheckCircle2, ChevronRight, 
@@ -58,31 +58,21 @@ export default function SaaSAdminDashboard() {
     hr: true
   });
 
-  const getApiUrl = () => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('POS_SERVER_URL');
-      if (saved) return saved.replace(/\/$/, '');
-      const hostname = window.location.hostname;
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:5000';
-      }
-      return window.location.origin;
-    }
-    return 'http://localhost:5000';
-  };
-  const SERVER_URL = getApiUrl();
+  // API base â€” use Vercel serverless functions (/api/*) directly
+  // On localhost dev: Vite proxy forwards /api/* to localhost:5000
+  const API = '';
 
   // Load All Data
   const loadGlobalAnalytics = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/analytics/global`);
+      const res = await axios.get(`${API}/api/vendors/analytics/global`);
       if (res.data) setGlobalAnalytics(res.data);
     } catch (err) {}
   };
 
   const fetchVendors = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors`);
+      const res = await axios.get(`${API}/api/vendors`);
       if (Array.isArray(res.data)) {
         setVendors(res.data);
         if (res.data.length > 0 && !selectedVendor) {
@@ -97,49 +87,49 @@ export default function SaaSAdminDashboard() {
 
   const fetchOutlets = async (vendorId) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/${vendorId}/outlets`);
+      const res = await axios.get(`${API}/api/vendors/${vendorId}/outlets`);
       if (Array.isArray(res.data)) setOutlets(res.data);
     } catch (err) {}
   };
 
   const fetchVendorStats = async (vendorId) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/${vendorId}/stats`);
+      const res = await axios.get(`${API}/api/vendors/${vendorId}/stats`);
       if (res.data) setSelectedVendorStats(res.data);
     } catch (err) {}
   };
 
   const fetchSaasTeam = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/saas/team`);
+      const res = await axios.get(`${API}/api/team`);
       if (Array.isArray(res.data)) setSaasTeam(res.data);
     } catch (err) {}
   };
 
   const fetchTickets = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/tickets/all`);
+      const res = await axios.get(`${API}/api/tickets`);
       if (Array.isArray(res.data)) setTickets(res.data);
     } catch (err) {}
   };
 
   const fetchAnnouncements = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/announcements/all`);
+      const res = await axios.get(`${API}/api/announcements`);
       if (Array.isArray(res.data)) setAnnouncements(res.data);
     } catch (err) {}
   };
 
   const fetchAuditLogs = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/audit-logs/all`);
+      const res = await axios.get(`${API}/api/audit-logs`);
       if (Array.isArray(res.data)) setAuditLogs(res.data);
     } catch (err) {}
   };
 
   const fetchPlans = async () => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/plans/all`);
+      const res = await axios.get(`${API}/api/plans`);
       if (Array.isArray(res.data)) setPlans(res.data);
     } catch (err) {}
   };
@@ -178,7 +168,7 @@ export default function SaaSAdminDashboard() {
     const plan_price = formData.get('plan_price');
 
     try {
-      await axios.post(`${SERVER_URL}/api/vendors`, {
+      await axios.post(`${API}/api/vendors`, {
         business_name,
         slug,
         email,
@@ -200,7 +190,7 @@ export default function SaaSAdminDashboard() {
     const actionName = newStatus === 'suspended' ? 'Suspend' : 'Reactivate';
     if (window.confirm(`${actionName} access for "${vendor.business_name}"?`)) {
       try {
-        await axios.put(`${SERVER_URL}/api/vendors/${vendor.id}/status`, { status: newStatus });
+        await axios.put(`${API}/api/vendors/${vendor.id}`, { status: newStatus });
         toast.success(`Vendor ${vendor.business_name} set to ${newStatus.toUpperCase()}`);
         refreshAllData();
       } catch (err) {
@@ -212,7 +202,7 @@ export default function SaaSAdminDashboard() {
   const handleSaveFeatures = async () => {
     if (!selectedVendor) return;
     try {
-      await axios.put(`${SERVER_URL}/api/vendors/${selectedVendor.id}/features`, {
+      await axios.put(`${API}/api/vendors/${selectedVendor.id}`, {
         features: vendorFeatures
       });
       toast.success(`Modular features updated for ${selectedVendor.business_name}!`);
@@ -233,7 +223,7 @@ export default function SaaSAdminDashboard() {
     const subscription_status = formData.get('subscription_status');
 
     try {
-      await axios.put(`${SERVER_URL}/api/vendors/${selectedVendor.id}/subscription`, {
+      await axios.put(`${API}/api/vendors/${selectedVendor.id}`, {
         plan_name,
         plan_price: Number(plan_price),
         renewal_date,
@@ -249,7 +239,7 @@ export default function SaaSAdminDashboard() {
 
   const handleGenerateConfig = async (vendor) => {
     try {
-      const res = await axios.get(`${SERVER_URL}/api/vendors/${vendor.id}/generate-config`);
+      const res = await axios.get(`${API}/api/vendors/${vendor.id}/generate-config`);
       setGeneratedConfig(res.data);
       setIsConfigModalOpen(true);
       setConfigCopied(false);
@@ -274,7 +264,7 @@ export default function SaaSAdminDashboard() {
     const name = formData.get('name');
 
     try {
-      await axios.post(`${SERVER_URL}/api/vendors/${selectedVendor.id}/outlets`, { name });
+      await axios.post(`${API}/api/vendors/${selectedVendor.id}/outlets`, { name });
       toast.success(`New branch "${name}" added to ${selectedVendor.business_name}!`);
       setIsAddOutletOpen(false);
       fetchOutlets(selectedVendor.id);
@@ -294,7 +284,7 @@ export default function SaaSAdminDashboard() {
     const priority = formData.get('priority');
 
     try {
-      await axios.post(`${SERVER_URL}/api/vendors/tickets`, {
+      await axios.post(`${API}/api/tickets`, {
         vendor_id, vendor_name, subject, description, priority
       });
       toast.success('Support ticket created successfully!');
@@ -308,7 +298,7 @@ export default function SaaSAdminDashboard() {
 
   const handleUpdateTicketStatus = async (ticketId, status) => {
     try {
-      await axios.put(`${SERVER_URL}/api/vendors/tickets/${ticketId}`, { status });
+      await axios.put(`${API}/api/tickets/${ticketId}`, { status });
       toast.success(`Ticket #${ticketId} status updated to ${status}`);
       fetchTickets();
       fetchAuditLogs();
@@ -325,7 +315,7 @@ export default function SaaSAdminDashboard() {
     const message = formData.get('message');
 
     try {
-      await axios.post(`${SERVER_URL}/api/vendors/announcements`, { title, message });
+      await axios.post(`${API}/api/announcements`, { title, message });
       toast.success('Platform announcement broadcasted to all vendors!');
       setIsAnnouncementModalOpen(false);
       fetchAnnouncements();
@@ -338,7 +328,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteAnnouncement = async (id) => {
     if (window.confirm('Delete this broadcast announcement?')) {
       try {
-        await axios.delete(`${SERVER_URL}/api/vendors/announcements/${id}`);
+        await axios.delete(`${API}/api/announcements/${id}`);
         toast.success('Announcement removed');
         fetchAnnouncements();
       } catch (err) {
@@ -358,7 +348,7 @@ export default function SaaSAdminDashboard() {
     const phone = formData.get('phone');
 
     try {
-      await axios.post(`${SERVER_URL}/api/vendors/saas/team`, {
+      await axios.post(`${API}/api/team`, {
         name, email, password, role, phone
       });
       toast.success(`New SaaS team member "${name}" added!`);
@@ -373,7 +363,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteTeamMember = async (t) => {
     if (window.confirm(`Delete SaaS staff account for "${t.name}"?`)) {
       try {
-        await axios.delete(`${SERVER_URL}/api/vendors/saas/team/${t.id}`);
+        await axios.delete(`${API}/api/team/${t.id}`);
         toast.success('Team member removed');
         fetchSaasTeam();
         fetchAuditLogs();
@@ -384,15 +374,15 @@ export default function SaaSAdminDashboard() {
   };
 
   const featureList = [
-    { key: 'takeaway', label: '🥡 Takeaway Only / Quick Bill', desc: 'Allows simple quick billing counter without table requirement' },
-    { key: 'dinein', label: '🍽️ Dine-In Table Management', desc: 'Enables interactive table layouts & floor plan management' },
-    { key: 'billing', label: '💳 Basic Billing Counter', desc: 'Enables receipt generation, thermal printing & cash/UPI payments' },
-    { key: 'kds', label: '👨‍🍳 Kitchen Display Screen (KDS)', desc: 'Enables real-time kitchen order tickets for chefs' },
-    { key: 'waiter', label: '📱 Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
-    { key: 'customer_qr', label: '📲 Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
-    { key: 'inventory', label: '📦 Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
-    { key: 'multi_outlet', label: '🏢 Multi-Outlet Chain Outlets', desc: 'Allows client restaurant to add multiple city branches' },
-    { key: 'hr', label: '👥 Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
+    { key: 'takeaway', label: 'ðŸ¥¡ Takeaway Only / Quick Bill', desc: 'Allows simple quick billing counter without table requirement' },
+    { key: 'dinein', label: 'ðŸ½ï¸ Dine-In Table Management', desc: 'Enables interactive table layouts & floor plan management' },
+    { key: 'billing', label: 'ðŸ’³ Basic Billing Counter', desc: 'Enables receipt generation, thermal printing & cash/UPI payments' },
+    { key: 'kds', label: 'ðŸ‘¨â€ðŸ³ Kitchen Display Screen (KDS)', desc: 'Enables real-time kitchen order tickets for chefs' },
+    { key: 'waiter', label: 'ðŸ“± Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
+    { key: 'customer_qr', label: 'ðŸ“² Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
+    { key: 'inventory', label: 'ðŸ“¦ Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
+    { key: 'multi_outlet', label: 'ðŸ¢ Multi-Outlet Chain Outlets', desc: 'Allows client restaurant to add multiple city branches' },
+    { key: 'hr', label: 'ðŸ‘¥ Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
   ];
 
   const getTeamRoleBadge = (role) => {
@@ -430,7 +420,7 @@ export default function SaaSAdminDashboard() {
           </div>
           <div>
             <h1 className="text-xl font-black bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2">
-              👑 HappyPie SaaS Command Center
+              ðŸ‘‘ HappyPie SaaS Command Center
             </h1>
             <p className="text-xs text-slate-400 flex items-center gap-1.5">
               <span>Enterprise Restaurant ERP Platform</span>
@@ -569,7 +559,7 @@ export default function SaaSAdminDashboard() {
                 </div>
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Monthly Recurring Revenue</span>
-                  <span className="text-xl font-black text-white">₹{globalAnalytics.mrr?.toLocaleString('en-IN')}</span>
+                  <span className="text-xl font-black text-white">â‚¹{globalAnalytics.mrr?.toLocaleString('en-IN')}</span>
                   <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">Active Subscriptions</span>
                 </div>
               </div>
@@ -582,7 +572,7 @@ export default function SaaSAdminDashboard() {
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Restaurants</span>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs font-black text-emerald-400">{globalAnalytics.active_vendors} Active</span>
-                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-600">â€¢</span>
                     <span className="text-xs font-black text-rose-400">{globalAnalytics.suspended_vendors} Suspended</span>
                   </div>
                 </div>
@@ -605,8 +595,8 @@ export default function SaaSAdminDashboard() {
                 </div>
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Gross Restaurant Sales</span>
-                  <span className="text-xl font-black text-amber-400">₹{globalAnalytics.total_revenue?.toLocaleString('en-IN')}</span>
-                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">₹{globalAnalytics.today_revenue?.toLocaleString('en-IN')} Today</span>
+                  <span className="text-xl font-black text-amber-400">â‚¹{globalAnalytics.total_revenue?.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">â‚¹{globalAnalytics.today_revenue?.toLocaleString('en-IN')} Today</span>
                 </div>
               </div>
             </div>
@@ -616,7 +606,7 @@ export default function SaaSAdminDashboard() {
               <div className="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center flex-wrap gap-4">
                 <div>
                   <h3 className="font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
-                    📊 Restaurant Clients Overview & Performance Matrix
+                    ðŸ“Š Restaurant Clients Overview & Performance Matrix
                   </h3>
                   <p className="text-xs text-slate-400">Monitor active subscription plan, status, and system entitlement for each brand</p>
                 </div>
@@ -624,7 +614,7 @@ export default function SaaSAdminDashboard() {
                   onClick={() => setActiveTab('clients')}
                   className="px-3.5 py-1.5 bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-black transition cursor-pointer"
                 >
-                  Manage Clients →
+                  Manage Clients â†’
                 </button>
               </div>
 
@@ -657,7 +647,7 @@ export default function SaaSAdminDashboard() {
                         </td>
                         <td className="p-4">
                           <span className="px-2.5 py-1 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-black">
-                            {v.plan_name || 'Professional POS'} (₹{v.plan_price || 2499}/mo)
+                            {v.plan_name || 'Professional POS'} (â‚¹{v.plan_price || 2499}/mo)
                           </span>
                         </td>
                         <td className="p-4">
@@ -845,7 +835,7 @@ export default function SaaSAdminDashboard() {
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Subscription Tier</span>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-sm font-black text-indigo-400">{selectedVendor.plan_name || 'Professional POS'}</span>
-                          <span className="text-xs font-bold text-slate-300">₹{selectedVendor.plan_price || 2499}/mo</span>
+                          <span className="text-xs font-bold text-slate-300">â‚¹{selectedVendor.plan_price || 2499}/mo</span>
                         </div>
                         <span className="text-xs text-slate-400 block mt-0.5">
                           Renews on: {selectedVendor.renewal_date || 'N/A'}
@@ -869,7 +859,7 @@ export default function SaaSAdminDashboard() {
                         </div>
                         <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                           <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Revenue</span>
-                          <span className="text-sm font-black text-emerald-400">₹{selectedVendorStats.total_revenue?.toLocaleString('en-IN')}</span>
+                          <span className="text-sm font-black text-emerald-400">â‚¹{selectedVendorStats.total_revenue?.toLocaleString('en-IN')}</span>
                         </div>
                         <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                           <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Staff Users</span>
@@ -882,7 +872,7 @@ export default function SaaSAdminDashboard() {
                     <div>
                       <div className="flex justify-between items-center mb-3">
                         <h4 className="font-black text-xs uppercase tracking-wider text-slate-400">
-                          🎛️ Feature Lock Entitlements for {selectedVendor.business_name}:
+                          ðŸŽ›ï¸ Feature Lock Entitlements for {selectedVendor.business_name}:
                         </h4>
                         <button
                           onClick={() => setIsFeaturesModalOpen(true)}
@@ -969,7 +959,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  💳 SaaS Platform Subscription Tiers & Pricing Plans
+                  ðŸ’³ SaaS Platform Subscription Tiers & Pricing Plans
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Manage subscription tiers, feature packages and monthly pricing</p>
               </div>
@@ -987,7 +977,7 @@ export default function SaaSAdminDashboard() {
                     </div>
 
                     <div className="mb-4">
-                      <span className="text-3xl font-black text-amber-400">₹{Number(p.price).toLocaleString('en-IN')}</span>
+                      <span className="text-3xl font-black text-amber-400">â‚¹{Number(p.price).toLocaleString('en-IN')}</span>
                       <span className="text-xs text-slate-400 font-bold"> / month</span>
                     </div>
 
@@ -1022,7 +1012,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  🎫 Restaurant Vendor Support Ticket Helpdesk
+                  ðŸŽ« Restaurant Vendor Support Ticket Helpdesk
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Resolve technical requests, hardware driver integrations & PIN reset requests from restaurant clients</p>
               </div>
@@ -1054,7 +1044,7 @@ export default function SaaSAdminDashboard() {
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="text-[10px] font-black text-indigo-400 font-mono">TICKET #{t.id} • {t.vendor_name}</span>
+                        <span className="text-[10px] font-black text-indigo-400 font-mono">TICKET #{t.id} â€¢ {t.vendor_name}</span>
                         <h4 className="font-black text-sm text-white mt-0.5">{t.subject}</h4>
                       </div>
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
@@ -1084,7 +1074,7 @@ export default function SaaSAdminDashboard() {
                           onClick={() => handleUpdateTicketStatus(t.id, 'resolved')}
                           className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black transition cursor-pointer"
                         >
-                          ✓ Mark Resolved
+                          âœ“ Mark Resolved
                         </button>
                       )}
                       {t.status === 'open' && (
@@ -1109,7 +1099,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  📢 Platform Announcements & Vendor Broadcast Message Center
+                  ðŸ“¢ Platform Announcements & Vendor Broadcast Message Center
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Broadcast system update news, feature launches or maintenance windows to all restaurant POS terminals</p>
               </div>
@@ -1131,7 +1121,7 @@ export default function SaaSAdminDashboard() {
                       <h4 className="font-black text-sm text-white">{a.title}</h4>
                     </div>
                     <p className="text-xs text-slate-300">{a.message}</p>
-                    <span className="text-[10px] text-slate-500 block font-mono">By {a.created_by || 'Super Admin'} • {a.created_at}</span>
+                    <span className="text-[10px] text-slate-500 block font-mono">By {a.created_by || 'Super Admin'} â€¢ {a.created_at}</span>
                   </div>
 
                   <button
@@ -1151,7 +1141,7 @@ export default function SaaSAdminDashboard() {
           <div className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
               <h3 className="font-black text-base text-white flex items-center gap-2">
-                📝 SaaS Platform Admin Audit Logs & Activity History
+                ðŸ“ SaaS Platform Admin Audit Logs & Activity History
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">Immutable audit trail of all administrative changes made across restaurants, feature locks, and subscriptions</p>
             </div>
@@ -1193,7 +1183,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  👥 SaaS Company Internal Team & Department Roles
+                  ðŸ‘¥ SaaS Company Internal Team & Department Roles
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Manage Super Admins, SaaS Managers, Customer Support Team, and Technical Devs</p>
               </div>
@@ -1252,7 +1242,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="font-black text-base text-amber-400 flex items-center gap-2">
-                  🛠️ Technical Team Live Database Sync & Telemetry
+                  ðŸ› ï¸ Technical Team Live Database Sync & Telemetry
                 </h3>
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Live Cloud Monitor
@@ -1286,7 +1276,7 @@ export default function SaaSAdminDashboard() {
               <h3 className="font-black text-lg text-amber-400">
                 Modular Feature Lock: {selectedVendor.business_name}
               </h3>
-              <button onClick={() => setIsFeaturesModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsFeaturesModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
 
             <div className="p-6 space-y-3 overflow-y-auto flex-1">
@@ -1328,7 +1318,7 @@ export default function SaaSAdminDashboard() {
                 onClick={handleSaveFeatures}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-lg transition cursor-pointer"
               >
-                💾 Save Feature Lock
+                ðŸ’¾ Save Feature Lock
               </button>
             </div>
           </div>
@@ -1341,7 +1331,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Onboard Client Restaurant Brand</h3>
-              <button onClick={() => setIsAddVendorOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsAddVendorOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleCreateVendor} className="p-6 space-y-4 text-xs">
               <div>
@@ -1367,13 +1357,13 @@ export default function SaaSAdminDashboard() {
                 <div>
                   <label className="block font-bold uppercase text-slate-400 mb-1">Select Subscription Plan</label>
                   <select name="plan_name" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none">
-                    <option value="Professional POS">Professional POS (₹2499/mo)</option>
-                    <option value="Starter Counter">Starter Counter (₹999/mo)</option>
-                    <option value="Enterprise Chain">Enterprise Chain (₹4999/mo)</option>
+                    <option value="Professional POS">Professional POS (â‚¹2499/mo)</option>
+                    <option value="Starter Counter">Starter Counter (â‚¹999/mo)</option>
+                    <option value="Enterprise Chain">Enterprise Chain (â‚¹4999/mo)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Rate (₹)</label>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Rate (â‚¹)</label>
                   <input type="number" name="plan_price" defaultValue="2499" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" />
                 </div>
               </div>
@@ -1393,7 +1383,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Update Subscription: {selectedVendor.business_name}</h3>
-              <button onClick={() => setIsSubscriptionModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsSubscriptionModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleUpdateSubscription} className="p-6 space-y-4 text-xs">
               <div>
@@ -1405,7 +1395,7 @@ export default function SaaSAdminDashboard() {
                 </select>
               </div>
               <div>
-                <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Billing Price (₹)</label>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Billing Price (â‚¹)</label>
                 <input type="number" name="plan_price" defaultValue={selectedVendor.plan_price || 2499} required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" />
               </div>
               <div>
@@ -1436,7 +1426,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-indigo-400">Log Restaurant Support Ticket</h3>
-              <button onClick={() => setIsTicketModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsTicketModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleCreateTicket} className="p-6 space-y-4 text-xs">
               <div>
@@ -1480,12 +1470,12 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Broadcast Vendor Announcement</h3>
-              <button onClick={() => setIsAnnouncementModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsAnnouncementModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleCreateAnnouncement} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Announcement Title</label>
-                <input type="text" name="title" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" placeholder="e.g. 🚀 Platform Maintenance Scheduled" />
+                <input type="text" name="title" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" placeholder="e.g. ðŸš€ Platform Maintenance Scheduled" />
               </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Broadcast Message</label>
@@ -1507,7 +1497,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Add SaaS Staff Member</h3>
-              <button onClick={() => setIsAddTeamOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsAddTeamOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleAddTeamMember} className="p-6 space-y-4 text-xs">
               <div>
@@ -1520,7 +1510,7 @@ export default function SaaSAdminDashboard() {
               </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Login Password</label>
-                <input type="password" name="password" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="••••••••" />
+                <input type="password" name="password" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
               </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Department Role</label>
@@ -1551,7 +1541,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Add Outlet Branch to {selectedVendor.business_name}</h3>
-              <button onClick={() => setIsAddOutletOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+              <button onClick={() => setIsAddOutletOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
             </div>
             <form onSubmit={handleCreateOutlet} className="p-6 space-y-4 text-xs">
               <div>
@@ -1579,12 +1569,12 @@ export default function SaaSAdminDashboard() {
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Vendor ID: #{generatedConfig.vendor_id} | Slug: @{generatedConfig.vendor_slug}</p>
               </div>
-              <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">✕</button>
+              <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">âœ•</button>
             </div>
 
             <div className="overflow-y-auto flex-1 p-6 space-y-5">
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">📋 Setup Instructions for Restaurant Owner:</h4>
+                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">ðŸ“‹ Setup Instructions for Restaurant Owner:</h4>
                 <ol className="space-y-1.5">
                   {generatedConfig.setup_instructions?.map((step, i) => (
                     <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
@@ -1617,7 +1607,7 @@ export default function SaaSAdminDashboard() {
 
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
                 <p className="text-xs text-emerald-300 font-bold">
-                  💡 Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.
+                  ðŸ’¡ Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.
                 </p>
               </div>
             </div>

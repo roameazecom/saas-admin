@@ -15,12 +15,13 @@ const getApiUrl = () => {
       if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
         base = `http://${hostname}:5000`;
       } else {
-        base = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+        // On Vercel or any cloud host, always use the cloud backend
+        base = import.meta.env.VITE_BACKEND_URL || 'https://apn.happypiecafe.in';
       }
     }
     return `${base.replace(/\/$/, '')}/api/auth`;
   }
-  return 'http://localhost:5000/api/auth';
+  return 'https://apn.happypiecafe.in/api/auth';
 };
 
 export const useAuthStore = create(
