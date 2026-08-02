@@ -87,14 +87,14 @@ export default function SaaSAdminDashboard() {
 
   const fetchOutlets = async (vendorId) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/${vendorId}/outlets`);
+      const res = await axios.get(`${API}/api/vendors/outlets?vendor_id=${vendorId}`);
       if (Array.isArray(res.data)) setOutlets(res.data);
     } catch (err) {}
   };
 
   const fetchVendorStats = async (vendorId) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/${vendorId}/stats`);
+      const res = await axios.get(`${API}/api/vendors/stats?vendor_id=${vendorId}`);
       if (res.data) setSelectedVendorStats(res.data);
     } catch (err) {}
   };
@@ -241,7 +241,7 @@ export default function SaaSAdminDashboard() {
 
   const handleGenerateConfig = async (vendor) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/${vendor.id}/generate-config`);
+      const res = await axios.get(`${API}/api/vendors/config?vendor_id=${vendor.id}`);
       setGeneratedConfig(res.data);
       setIsConfigModalOpen(true);
       setConfigCopied(false);
@@ -266,7 +266,7 @@ export default function SaaSAdminDashboard() {
     const name = formData.get('name');
 
     try {
-      await axios.post(`${API}/api/vendors/${selectedVendor.id}/outlets`, { name });
+      await axios.post(`${API}/api/vendors/outlets`, { name, vendor_id: selectedVendor.id });
       toast.success(`New branch "${name}" added to ${selectedVendor.business_name}!`);
       setIsAddOutletOpen(false);
       fetchOutlets(selectedVendor.id);

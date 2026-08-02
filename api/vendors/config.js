@@ -1,19 +1,15 @@
-import { getDb, cors } from '../../../_db.js';
+import { getDb, cors } from '../_db.js';
 
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const db = getDb();
-  const { id } = req.query;
-
-  // GET /api/vendors/[id]/generate-config
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const { vendor_id } = req.query;
 
   try {
-    const [vendors] = await db.query('SELECT * FROM vendors WHERE id = ?', [id]);
+    const [vendors] = await db.query('SELECT * FROM vendors WHERE id = ?', [vendor_id]);
     if (vendors.length === 0) return res.status(404).json({ error: 'Vendor not found' });
-
     const vendor = vendors[0];
 
     const envContent = `# ================================================================
@@ -43,7 +39,6 @@ CLOUD_DB_SSL=true
 # Server Port
 PORT=5000
 `;
-
     return res.status(200).json({
       success: true,
       vendor_id: vendor.id,
