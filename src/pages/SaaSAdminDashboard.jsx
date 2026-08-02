@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Shield, Users, Building2, Plus, Edit3, Trash2, CheckCircle2, ChevronRight, 
@@ -374,15 +374,15 @@ export default function SaaSAdminDashboard() {
   };
 
   const featureList = [
-    { key: 'takeaway', label: 'ðŸ¥¡ Takeaway Only / Quick Bill', desc: 'Allows simple quick billing counter without table requirement' },
-    { key: 'dinein', label: 'ðŸ½ï¸ Dine-In Table Management', desc: 'Enables interactive table layouts & floor plan management' },
-    { key: 'billing', label: 'ðŸ’³ Basic Billing Counter', desc: 'Enables receipt generation, thermal printing & cash/UPI payments' },
-    { key: 'kds', label: 'ðŸ‘¨â€ðŸ³ Kitchen Display Screen (KDS)', desc: 'Enables real-time kitchen order tickets for chefs' },
-    { key: 'waiter', label: '📱 Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
-    { key: 'customer_qr', label: '📲 Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
-    { key: 'inventory', label: '📦 Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
-    { key: 'multi_outlet', label: 'ðŸ¢ Multi-Outlet Chain Outlets', desc: 'Allows client restaurant to add multiple city branches' },
-    { key: 'hr', label: '👥 Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
+    { key: 'takeaway', label: 'Takeaway Only / Quick Bill', desc: 'Allows simple quick billing counter without table requirement' },
+    { key: 'dinein', label: 'Dine-In Table Management', desc: 'Enables interactive table layouts & floor plan management' },
+    { key: 'billing', label: 'Basic Billing Counter', desc: 'Enables receipt generation, thermal printing & cash/UPI payments' },
+    { key: 'kds', label: 'Kitchen Display Screen (KDS)', desc: 'Enables real-time kitchen order tickets for chefs' },
+    { key: 'waiter', label: 'Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
+    { key: 'customer_qr', label: 'Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
+    { key: 'inventory', label: 'Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
+    { key: 'multi_outlet', label: 'Multi-Outlet Chain Outlets', desc: 'Allows client restaurant to add multiple city branches' },
+    { key: 'hr', label: 'Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
   ];
 
   const getTeamRoleBadge = (role) => {
@@ -959,7 +959,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  ðŸ’³ SaaS Platform Subscription Tiers & Pricing Plans
+                  💳 SaaS Platform Subscription Tiers & Pricing Plans
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Manage subscription tiers, feature packages and monthly pricing</p>
               </div>
@@ -1012,7 +1012,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  ðŸŽ« Restaurant Vendor Support Ticket Helpdesk
+                  🎟️ Restaurant Vendor Support Ticket Helpdesk
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Resolve technical requests, hardware driver integrations & PIN reset requests from restaurant clients</p>
               </div>
@@ -1099,7 +1099,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  ðŸ“¢ Platform Announcements & Vendor Broadcast Message Center
+                  📢 Platform Announcements & Vendor Broadcast Message Center
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Broadcast system update news, feature launches or maintenance windows to all restaurant POS terminals</p>
               </div>
@@ -1141,7 +1141,7 @@ export default function SaaSAdminDashboard() {
           <div className="space-y-6">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
               <h3 className="font-black text-base text-white flex items-center gap-2">
-                ðŸ“ SaaS Platform Admin Audit Logs & Activity History
+                📜 SaaS Platform Admin Audit Logs & Activity History
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">Immutable audit trail of all administrative changes made across restaurants, feature locks, and subscriptions</p>
             </div>
@@ -1242,7 +1242,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="font-black text-base text-amber-400 flex items-center gap-2">
-                  ðŸ› ï¸ Technical Team Live Database Sync & Telemetry
+                  <Wrench className="w-5 h-5 text-amber-400" /> Technical Team Telemetry
                 </h3>
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Live Cloud Monitor
@@ -1276,7 +1276,7 @@ export default function SaaSAdminDashboard() {
               <h3 className="font-black text-lg text-amber-400">
                 Modular Feature Lock: {selectedVendor.business_name}
               </h3>
-              <button onClick={() => setIsFeaturesModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsFeaturesModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
 
             <div className="p-6 space-y-3 overflow-y-auto flex-1">
@@ -1331,7 +1331,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Onboard Client Restaurant Brand</h3>
-              <button onClick={() => setIsAddVendorOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsAddVendorOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleCreateVendor} className="p-6 space-y-4 text-xs">
               <div>
@@ -1383,7 +1383,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Update Subscription: {selectedVendor.business_name}</h3>
-              <button onClick={() => setIsSubscriptionModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsSubscriptionModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleUpdateSubscription} className="p-6 space-y-4 text-xs">
               <div>
@@ -1426,7 +1426,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-indigo-400">Log Restaurant Support Ticket</h3>
-              <button onClick={() => setIsTicketModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsTicketModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleCreateTicket} className="p-6 space-y-4 text-xs">
               <div>
@@ -1470,7 +1470,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Broadcast Vendor Announcement</h3>
-              <button onClick={() => setIsAnnouncementModalOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsAnnouncementModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleCreateAnnouncement} className="p-6 space-y-4 text-xs">
               <div>
@@ -1497,7 +1497,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Add SaaS Staff Member</h3>
-              <button onClick={() => setIsAddTeamOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsAddTeamOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleAddTeamMember} className="p-6 space-y-4 text-xs">
               <div>
@@ -1541,7 +1541,7 @@ export default function SaaSAdminDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
               <h3 className="font-black text-lg text-amber-400">Add Outlet Branch to {selectedVendor.business_name}</h3>
-              <button onClick={() => setIsAddOutletOpen(false)} className="text-slate-500 hover:text-white font-bold">âœ•</button>
+              <button onClick={() => setIsAddOutletOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleCreateOutlet} className="p-6 space-y-4 text-xs">
               <div>
@@ -1569,12 +1569,12 @@ export default function SaaSAdminDashboard() {
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Vendor ID: #{generatedConfig.vendor_id} | Slug: @{generatedConfig.vendor_slug}</p>
               </div>
-              <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">âœ•</button>
+              <button onClick={() => setIsConfigModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">✕</button>
             </div>
 
             <div className="overflow-y-auto flex-1 p-6 space-y-5">
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">ðŸ“‹ Setup Instructions for Restaurant Owner:</h4>
+                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">📜‹ Setup Instructions for Restaurant Owner:</h4>
                 <ol className="space-y-1.5">
                   {generatedConfig.setup_instructions?.map((step, i) => (
                     <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
