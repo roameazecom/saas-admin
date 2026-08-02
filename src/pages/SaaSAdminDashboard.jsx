@@ -614,7 +614,7 @@ export default function SaaSAdminDashboard() {
                   onClick={() => setActiveTab('clients')}
                   className="px-3.5 py-1.5 bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-black transition cursor-pointer"
                 >
-                  Manage Clients â†’
+                  Manage Clients →
                 </button>
               </div>
 
