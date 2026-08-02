@@ -6,6 +6,7 @@ export default async function handler(req, res) {
 
   const db = getDb();
 
+  // GET announcements
   if (req.method === 'GET') {
     try {
       const [announcements] = await db.query(
@@ -17,9 +18,18 @@ export default async function handler(req, res) {
     }
   }
 
+  // POST create or delete announcement
   if (req.method === 'POST') {
     try {
-      const { title, message, target_vendor_id, created_by } = req.body;
+      const { action, id, title, message, target_vendor_id, created_by } = req.body;
+
+      // Delete announcement action
+      if (action === 'delete' || (id && !title)) {
+        await db.query('DELETE FROM saas_announcements WHERE id = ?', [id]);
+        return res.status(200).json({ success: true, message: `Announcement #${id} removed` });
+      }
+
+      // Create announcement
       const [result] = await db.query(
         `INSERT INTO saas_announcements (title, message, target_vendor_id, created_by) VALUES (?, ?, ?, ?)`,
         [title, message, target_vendor_id || null, created_by || 'Super Admin']

@@ -330,7 +330,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteAnnouncement = async (id) => {
     if (window.confirm('Delete this broadcast announcement?')) {
       try {
-        await axios.delete(`${API}/api/announcements/${id}`);
+        await axios.post(`${API}/api/announcements`, { action: 'delete', id });
         toast.success('Announcement removed');
         fetchAnnouncements();
       } catch (err) {
@@ -365,7 +365,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteTeamMember = async (t) => {
     if (window.confirm(`Delete SaaS staff account for "${t.name}"?`)) {
       try {
-        await axios.delete(`${API}/api/team/${t.id}`);
+        await axios.post(`${API}/api/team`, { action: 'delete', id: t.id });
         toast.success('Team member removed');
         fetchSaasTeam();
         fetchAuditLogs();

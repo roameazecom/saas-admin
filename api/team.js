@@ -18,10 +18,18 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST create team member
+  // POST create or delete team member
   if (req.method === 'POST') {
     try {
-      const { name, email, password, role, phone } = req.body;
+      const { action, id, name, email, password, role, phone } = req.body;
+
+      // Handle delete action
+      if (action === 'delete' || (id && !password)) {
+        await db.query('DELETE FROM saas_users WHERE id = ?', [id]);
+        return res.status(200).json({ success: true, message: `Team member #${id} removed` });
+      }
+
+      // Handle create team member
       if (!name || !email || !password) {
         return res.status(400).json({ error: 'Name, email and password are required' });
       }
