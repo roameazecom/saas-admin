@@ -1,4 +1,4 @@
-import { getDb, cors } from '../_db.js';
+import { getDb, cors } from '../../_db.js';
 
 export default async function handler(req, res) {
   cors(res);
