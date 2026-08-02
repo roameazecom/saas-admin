@@ -1574,7 +1574,9 @@ export default function SaaSAdminDashboard() {
 
             <div className="overflow-y-auto flex-1 p-6 space-y-5">
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
-                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">📜‹ Setup Instructions for Restaurant Owner:</h4>
+                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4" /> Setup Instructions for Restaurant Owner:
+                </h4>
                 <ol className="space-y-1.5">
                   {generatedConfig.setup_instructions?.map((step, i) => (
                     <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
@@ -1606,8 +1608,9 @@ export default function SaaSAdminDashboard() {
               </div>
 
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
-                <p className="text-xs text-emerald-300 font-bold">
-                  ðŸ’¡ Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.
+                <p className="text-xs text-emerald-300 font-bold flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.</span>
                 </p>
               </div>
             </div>
