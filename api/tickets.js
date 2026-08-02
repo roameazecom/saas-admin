@@ -21,7 +21,16 @@ export default async function handler(req, res) {
   // POST new ticket
   if (req.method === 'POST') {
     try {
-      const { vendor_id, vendor_name, subject, description, priority } = req.body;
+      const { ticketId, ticket_id, id, status, vendor_id, vendor_name, subject, description, priority } = req.body;
+
+      // Handle ticket status update via POST
+      if (status && (ticketId || ticket_id || id)) {
+        const targetId = ticketId || ticket_id || id;
+        await db.query('UPDATE saas_tickets SET status = ? WHERE id = ?', [status, targetId]);
+        return res.status(200).json({ success: true, message: `Ticket #${targetId} updated to ${status}` });
+      }
+
+      // Handle create ticket
       const [result] = await db.query(
         `INSERT INTO saas_tickets (vendor_id, vendor_name, subject, description, priority, status) VALUES (?, ?, ?, ?, ?, 'open')`,
         [vendor_id, vendor_name, subject, description, priority || 'medium']

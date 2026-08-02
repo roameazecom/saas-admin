@@ -300,7 +300,7 @@ export default function SaaSAdminDashboard() {
 
   const handleUpdateTicketStatus = async (ticketId, status) => {
     try {
-      await axios.put(`${API}/api/tickets/${ticketId}`, { status });
+      await axios.post(`${API}/api/tickets`, { ticketId, status });
       toast.success(`Ticket #${ticketId} status updated to ${status}`);
       fetchTickets();
       fetchAuditLogs();
