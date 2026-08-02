@@ -378,11 +378,11 @@ export default function SaaSAdminDashboard() {
     { key: 'dinein', label: 'ðŸ½ï¸ Dine-In Table Management', desc: 'Enables interactive table layouts & floor plan management' },
     { key: 'billing', label: 'ðŸ’³ Basic Billing Counter', desc: 'Enables receipt generation, thermal printing & cash/UPI payments' },
     { key: 'kds', label: 'ðŸ‘¨â€ðŸ³ Kitchen Display Screen (KDS)', desc: 'Enables real-time kitchen order tickets for chefs' },
-    { key: 'waiter', label: 'ðŸ“± Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
-    { key: 'customer_qr', label: 'ðŸ“² Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
-    { key: 'inventory', label: 'ðŸ“¦ Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
+    { key: 'waiter', label: '📱 Waiter Mobile Ordering App', desc: 'Enables mobile order punching & table calls for waiters' },
+    { key: 'customer_qr', label: '📲 Customer QR Table Self-Ordering', desc: 'Allows customers to scan QR and self-order from phone' },
+    { key: 'inventory', label: '📦 Inventory & Recipe Control', desc: 'Enables stock balances & automatic ingredient deduction' },
     { key: 'multi_outlet', label: 'ðŸ¢ Multi-Outlet Chain Outlets', desc: 'Allows client restaurant to add multiple city branches' },
-    { key: 'hr', label: 'ðŸ‘¥ Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
+    { key: 'hr', label: '👥 Staff HR & Attendance', desc: 'Enables staff clock-in/out logs, leave approvals & help tickets' }
   ];
 
   const getTeamRoleBadge = (role) => {
@@ -420,7 +420,7 @@ export default function SaaSAdminDashboard() {
           </div>
           <div>
             <h1 className="text-xl font-black bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2">
-              ðŸ‘‘ HappyPie SaaS Command Center
+              👑 HappyPie SaaS Command Center
             </h1>
             <p className="text-xs text-slate-400 flex items-center gap-1.5">
               <span>Enterprise Restaurant ERP Platform</span>
@@ -559,7 +559,7 @@ export default function SaaSAdminDashboard() {
                 </div>
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Monthly Recurring Revenue</span>
-                  <span className="text-xl font-black text-white">â‚¹{globalAnalytics.mrr?.toLocaleString('en-IN')}</span>
+                  <span className="text-xl font-black text-white">₹{globalAnalytics.mrr?.toLocaleString('en-IN')}</span>
                   <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">Active Subscriptions</span>
                 </div>
               </div>
@@ -572,7 +572,7 @@ export default function SaaSAdminDashboard() {
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Restaurants</span>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs font-black text-emerald-400">{globalAnalytics.active_vendors} Active</span>
-                    <span className="text-slate-600">â€¢</span>
+                    <span className="text-slate-600">•</span>
                     <span className="text-xs font-black text-rose-400">{globalAnalytics.suspended_vendors} Suspended</span>
                   </div>
                 </div>
@@ -595,8 +595,8 @@ export default function SaaSAdminDashboard() {
                 </div>
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Gross Restaurant Sales</span>
-                  <span className="text-xl font-black text-amber-400">â‚¹{globalAnalytics.total_revenue?.toLocaleString('en-IN')}</span>
-                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">â‚¹{globalAnalytics.today_revenue?.toLocaleString('en-IN')} Today</span>
+                  <span className="text-xl font-black text-amber-400">₹{globalAnalytics.total_revenue?.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5">₹{globalAnalytics.today_revenue?.toLocaleString('en-IN')} Today</span>
                 </div>
               </div>
             </div>
@@ -606,7 +606,7 @@ export default function SaaSAdminDashboard() {
               <div className="p-5 bg-slate-950 border-b border-slate-800 flex justify-between items-center flex-wrap gap-4">
                 <div>
                   <h3 className="font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
-                    ðŸ“Š Restaurant Clients Overview & Performance Matrix
+                    📊 Restaurant Clients Overview & Performance Matrix
                   </h3>
                   <p className="text-xs text-slate-400">Monitor active subscription plan, status, and system entitlement for each brand</p>
                 </div>
@@ -647,7 +647,7 @@ export default function SaaSAdminDashboard() {
                         </td>
                         <td className="p-4">
                           <span className="px-2.5 py-1 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs font-black">
-                            {v.plan_name || 'Professional POS'} (â‚¹{v.plan_price || 2499}/mo)
+                            {v.plan_name || 'Professional POS'} (₹{v.plan_price || 2499}/mo)
                           </span>
                         </td>
                         <td className="p-4">
@@ -835,7 +835,7 @@ export default function SaaSAdminDashboard() {
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Subscription Tier</span>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-sm font-black text-indigo-400">{selectedVendor.plan_name || 'Professional POS'}</span>
-                          <span className="text-xs font-bold text-slate-300">â‚¹{selectedVendor.plan_price || 2499}/mo</span>
+                          <span className="text-xs font-bold text-slate-300">₹{selectedVendor.plan_price || 2499}/mo</span>
                         </div>
                         <span className="text-xs text-slate-400 block mt-0.5">
                           Renews on: {selectedVendor.renewal_date || 'N/A'}
@@ -859,7 +859,7 @@ export default function SaaSAdminDashboard() {
                         </div>
                         <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                           <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Revenue</span>
-                          <span className="text-sm font-black text-emerald-400">â‚¹{selectedVendorStats.total_revenue?.toLocaleString('en-IN')}</span>
+                          <span className="text-sm font-black text-emerald-400">₹{selectedVendorStats.total_revenue?.toLocaleString('en-IN')}</span>
                         </div>
                         <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
                           <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Staff Users</span>
@@ -977,7 +977,7 @@ export default function SaaSAdminDashboard() {
                     </div>
 
                     <div className="mb-4">
-                      <span className="text-3xl font-black text-amber-400">â‚¹{Number(p.price).toLocaleString('en-IN')}</span>
+                      <span className="text-3xl font-black text-amber-400">₹{Number(p.price).toLocaleString('en-IN')}</span>
                       <span className="text-xs text-slate-400 font-bold"> / month</span>
                     </div>
 
@@ -1044,7 +1044,7 @@ export default function SaaSAdminDashboard() {
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="text-[10px] font-black text-indigo-400 font-mono">TICKET #{t.id} â€¢ {t.vendor_name}</span>
+                        <span className="text-[10px] font-black text-indigo-400 font-mono">TICKET #{t.id} • {t.vendor_name}</span>
                         <h4 className="font-black text-sm text-white mt-0.5">{t.subject}</h4>
                       </div>
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
@@ -1121,7 +1121,7 @@ export default function SaaSAdminDashboard() {
                       <h4 className="font-black text-sm text-white">{a.title}</h4>
                     </div>
                     <p className="text-xs text-slate-300">{a.message}</p>
-                    <span className="text-[10px] text-slate-500 block font-mono">By {a.created_by || 'Super Admin'} â€¢ {a.created_at}</span>
+                    <span className="text-[10px] text-slate-500 block font-mono">By {a.created_by || 'Super Admin'} • {a.created_at}</span>
                   </div>
 
                   <button
@@ -1183,7 +1183,7 @@ export default function SaaSAdminDashboard() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex justify-between items-center flex-wrap gap-4">
               <div>
                 <h3 className="font-black text-base text-white flex items-center gap-2">
-                  ðŸ‘¥ SaaS Company Internal Team & Department Roles
+                  👥 SaaS Company Internal Team & Department Roles
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">Manage Super Admins, SaaS Managers, Customer Support Team, and Technical Devs</p>
               </div>
@@ -1357,13 +1357,13 @@ export default function SaaSAdminDashboard() {
                 <div>
                   <label className="block font-bold uppercase text-slate-400 mb-1">Select Subscription Plan</label>
                   <select name="plan_name" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none">
-                    <option value="Professional POS">Professional POS (â‚¹2499/mo)</option>
-                    <option value="Starter Counter">Starter Counter (â‚¹999/mo)</option>
-                    <option value="Enterprise Chain">Enterprise Chain (â‚¹4999/mo)</option>
+                    <option value="Professional POS">Professional POS (₹2499/mo)</option>
+                    <option value="Starter Counter">Starter Counter (₹999/mo)</option>
+                    <option value="Enterprise Chain">Enterprise Chain (₹4999/mo)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Rate (â‚¹)</label>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Rate (₹)</label>
                   <input type="number" name="plan_price" defaultValue="2499" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" />
                 </div>
               </div>
@@ -1395,7 +1395,7 @@ export default function SaaSAdminDashboard() {
                 </select>
               </div>
               <div>
-                <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Billing Price (â‚¹)</label>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Monthly Billing Price (₹)</label>
                 <input type="number" name="plan_price" defaultValue={selectedVendor.plan_price || 2499} required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" />
               </div>
               <div>
@@ -1510,7 +1510,7 @@ export default function SaaSAdminDashboard() {
               </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Login Password</label>
-                <input type="password" name="password" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
+                <input type="password" name="password" required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="••••••••" />
               </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Department Role</label>
