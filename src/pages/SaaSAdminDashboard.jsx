@@ -190,7 +190,7 @@ export default function SaaSAdminDashboard() {
     const actionName = newStatus === 'suspended' ? 'Suspend' : 'Reactivate';
     if (window.confirm(`${actionName} access for "${vendor.business_name}"?`)) {
       try {
-        await axios.put(`${API}/api/vendors/${vendor.id}`, { status: newStatus });
+        await axios.post(`${API}/api/vendors/update`, { id: vendor.id, status: newStatus });
         toast.success(`Vendor ${vendor.business_name} set to ${newStatus.toUpperCase()}`);
         refreshAllData();
       } catch (err) {
@@ -202,7 +202,8 @@ export default function SaaSAdminDashboard() {
   const handleSaveFeatures = async () => {
     if (!selectedVendor) return;
     try {
-      await axios.put(`${API}/api/vendors/${selectedVendor.id}`, {
+      await axios.post(`${API}/api/vendors/update`, {
+        id: selectedVendor.id,
         features: vendorFeatures
       });
       toast.success(`Modular features updated for ${selectedVendor.business_name}!`);
@@ -223,7 +224,8 @@ export default function SaaSAdminDashboard() {
     const subscription_status = formData.get('subscription_status');
 
     try {
-      await axios.put(`${API}/api/vendors/${selectedVendor.id}`, {
+      await axios.post(`${API}/api/vendors/update`, {
+        id: selectedVendor.id,
         plan_name,
         plan_price: Number(plan_price),
         renewal_date,
