@@ -106,7 +106,7 @@ export default function Login() {
             }}>
               <img src={restaurantDetails?.logo_base64 || APP_LOGO_BASE64} alt="Logo" className="w-full h-full object-cover rounded-xl" />
             </div>
-            <span className="text-surface-100 font-black text-lg">{restaurantDetails?.name || 'Happy Pie'}</span>
+            <span className="text-surface-100 font-black text-lg">{restaurantDetails?.name || 'HappyPie'}</span>
           </div>
 
           {/* Hero text */}
@@ -174,7 +174,7 @@ export default function Login() {
             }}>
               <img src={restaurantDetails?.logo_base64 || APP_LOGO_BASE64} alt="Logo" className="w-full h-full object-cover rounded-2xl" />
             </div>
-            <span className="font-black text-xl text-surface-100">{restaurantDetails?.name || 'Happy Pie'}</span>
+            <span className="font-black text-xl text-surface-100">{restaurantDetails?.name || 'HappyPie'}</span>
           </div>
 
           <h2 className="text-3xl font-black text-surface-100 mb-2">Welcome back</h2>

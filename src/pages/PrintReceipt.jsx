@@ -260,7 +260,7 @@ export default function PrintReceipt() {
         {/* ── Footer ── */}
         <div style={{ ...S.center, fontSize: '10px', marginTop: '4px' }}>
           <div style={{ fontStyle: 'italic' }}>Thank you! Please visit again.</div>
-          <div style={{ fontSize: '9px', marginTop: '2px', color: '#555' }}>Powered by AppThat POS</div>
+          <div style={{ fontSize: '9px', marginTop: '2px', color: '#555' }}>Powered by HappyPie POS</div>
         </div>
 
         {/* ── Manual print button (hidden on print) ── */}

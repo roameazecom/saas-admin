@@ -49,7 +49,7 @@ export default function AdminDashboard() {
             <h3 className="text-sm font-bold text-orange-800">DATA RETENTION POLICY UPDATE</h3>
             <div className="mt-1 text-sm text-orange-700 font-medium">
               <p>
-                From 25/04/2026, AppThat POS will retain your data for last 730 days (2 years) only. Data older than 2 years will be permanently deleted.
+                From 25/04/2026, HappyPie POS will retain your data for last 730 days (2 years) only. Data older than 2 years will be permanently deleted.
               </p>
               <p className="mt-1 font-bold underline cursor-pointer text-brand-600 hover:text-brand-700">Click here to download the data.</p>
             </div>

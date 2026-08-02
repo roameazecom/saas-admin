@@ -80,7 +80,7 @@ export default function CustomerLogin() {
             <img src={restaurantDetails?.logo_base64 || APP_LOGO_BASE64} alt="Logo" className="w-full h-full object-cover rounded-3xl" />
           </div>
           <h2 className="text-2xl font-black text-slate-900">
-            {restaurantDetails?.name || 'Happy Pie'}
+            {restaurantDetails?.name || 'HappyPie'}
           </h2>
           <p className="text-slate-500 text-sm mt-1">Please enter details to start ordering</p>
         </div>
