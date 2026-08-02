@@ -42,7 +42,7 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+if ('serviceWorker' in navigator && window.location.protocol !== 'file:' && window.location.protocol !== 'app:' && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
   const registerSW = () => {
     try {
       navigator.serviceWorker.register('/sw.js')

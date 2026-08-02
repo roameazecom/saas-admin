@@ -5,7 +5,7 @@ import {
   MapPin, Mail, Phone, Settings, Layers, Lock, Unlock, Server, Activity, 
   Wrench, Headphones, UserCheck, AlertTriangle, Download, Copy, Check, Terminal,
   CreditCard, MessageSquare, Bell, FileText, Search, RefreshCw, ExternalLink,
-  MessageCircle, DollarSign, TrendingUp, Zap, Power, AlertCircle, Eye
+  MessageCircle, DollarSign, TrendingUp, Zap, Power, AlertCircle, Eye, Key
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -39,6 +39,11 @@ export default function SaaSAdminDashboard() {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [generatedConfig, setGeneratedConfig] = useState(null);
   const [configCopied, setConfigCopied] = useState(false);
+  // Activation Token state
+  const [generatedToken, setGeneratedToken] = useState(null);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -247,6 +252,31 @@ export default function SaaSAdminDashboard() {
       setConfigCopied(false);
     } catch (err) {
       toast.error('Failed to generate config');
+    }
+  };
+
+  // Generate Secure Activation Token for POS Setup Wizard
+  const handleGenerateToken = async (vendor) => {
+    setTokenLoading(true);
+    try {
+      const res = await axios.post(`${API}/api/vendors/${vendor.id}/generate-token`);
+      setGeneratedToken({ ...res.data, vendor_name: vendor.business_name });
+      setIsTokenModalOpen(true);
+      setTokenCopied(false);
+      toast.success('Activation token generated! Share it with the restaurant owner.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate activation token');
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const handleCopyToken = () => {
+    if (generatedToken?.token) {
+      navigator.clipboard.writeText(generatedToken.token);
+      setTokenCopied(true);
+      toast.success('Activation token copied to clipboard!');
+      setTimeout(() => setTokenCopied(false), 3000);
     }
   };
 
@@ -826,6 +856,15 @@ export default function SaaSAdminDashboard() {
                         className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-1"
                       >
                         <Terminal className="w-3.5 h-3.5" /> Setup Config
+                      </button>
+
+                      <button
+                        onClick={() => handleGenerateToken(selectedVendor)}
+                        disabled={tokenLoading}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/25"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        {tokenLoading ? 'Generating...' : '🔑 Generate Setup Token'}
                       </button>
                     </div>
                   </div>
@@ -1614,6 +1653,84 @@ export default function SaaSAdminDashboard() {
                   <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.</span>
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ACTIVATION TOKEN (Secure POS Setup) */}
+      {isTokenModalOpen && generatedToken && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 bg-emerald-950/30 flex justify-between items-center">
+              <div>
+                <h3 className="font-black text-lg text-emerald-400 flex items-center gap-2">
+                  🔑 POS Activation Token
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">For: {generatedToken.vendor_name}</p>
+              </div>
+              <button onClick={() => setIsTokenModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">✕</button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Expiry Warning */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2">
+                <span className="text-amber-400 text-lg">⏰</span>
+                <div>
+                  <p className="text-xs font-black text-amber-300">Valid for 7 days only</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Expires: {generatedToken.expires_at ? new Date(generatedToken.expires_at).toLocaleString('en-IN') : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Token display */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Activation Token</label>
+                  <button
+                    onClick={handleCopyToken}
+                    className={`px-3 py-1.5 text-xs font-black rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
+                      tokenCopied ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    }`}
+                  >
+                    {tokenCopied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Token</>}
+                  </button>
+                </div>
+                <pre className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-emerald-400 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all leading-relaxed select-all">
+                  {generatedToken.token}
+                </pre>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
+                <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">📋 Instructions for Restaurant Owner:</h4>
+                <ol className="space-y-2">
+                  {['Install HappyPie POS on the restaurant machine and launch it.', 'The Setup Wizard will open automatically on first run.', 'Paste this token in the "Activation Token" field and click Activate.', 'Your restaurant name and first admin PIN will appear — save the PIN.', 'Click "Launch POS" to start using the system.'].map((step, i) => (
+                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black flex-shrink-0 flex items-center justify-center mt-0.5">{i + 1}</span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCopyToken}
+                  className={`flex-1 py-3 rounded-xl text-sm font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+                    tokenCopied ? 'bg-emerald-600 text-white' : 'bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600 hover:text-white'
+                  }`}
+                >
+                  <Copy className="w-4 h-4" /> {tokenCopied ? 'Copied!' : 'Copy Token'}
+                </button>
+                <button
+                  onClick={() => setIsTokenModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl text-sm font-black bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
