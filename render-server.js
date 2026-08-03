@@ -102,7 +102,30 @@ app.get('/api/vendors', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── POST /api/vendors — Create vendor ─────────────────────────────────────────
+// ── POST /api/vendors/:id/generate-token ─────────────────────────────────────
+app.post('/api/vendors/:id/generate-token', async (req, res) => {
+  try {
+    const db = getDb();
+    const [rows] = await db.query('SELECT id, business_name, vendor_code, slug, email FROM vendors WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Vendor not found' });
+
+    const vendor = rows[0];
+    let vendorCode = vendor.vendor_code;
+    if (!vendorCode) {
+      const sp = (vendor.slug || vendor.business_name || 'ven').replace(/[^a-z0-9]/gi, '').substring(0, 4).toUpperCase();
+      vendorCode = `HP-${sp || 'VEN'}-${Math.floor(1000 + Math.random() * 9000)}`;
+      await db.query('UPDATE vendors SET vendor_code = ? WHERE id = ?', [vendorCode, vendor.id]);
+    }
+
+    const token = generateActivationToken(vendor.id, vendorCode);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id})`);
+
+    res.json({ success: true, token, vendor_name: vendor.business_name, vendor_code: vendorCode, expires_at: expiresAt });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/vendors — Create vendor (must come AFTER /:id/generate-token) ──
 app.post('/api/vendors', async (req, res) => {
   try {
     const { business_name, slug, email, phone, plan_name, plan_price, renewal_date, grace_period_days, features, owner_name, owner_password, tax_percent } = req.body;
@@ -124,29 +147,6 @@ app.post('/api/vendors', async (req, res) => {
     try { await db.query(`INSERT INTO users (vendor_id, name, email, password, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`, [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, owner_password || 'admin123']); } catch (e) {}
     await audit('ONBOARD_VENDOR', `Onboarded: ${business_name} (ID: ${vendorId})`);
     res.json({ success: true, id: vendorId, vendor_code, tenant_id, message: `${business_name} onboarded successfully` });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── POST /api/vendors/:id/generate-token ─────────────────────────────────────
-app.post('/api/vendors/:id/generate-token', async (req, res) => {
-  try {
-    const db = getDb();
-    const [rows] = await db.query('SELECT id, business_name, vendor_code, slug, email FROM vendors WHERE id = ?', [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'Vendor not found' });
-
-    const vendor = rows[0];
-    let vendorCode = vendor.vendor_code;
-    if (!vendorCode) {
-      const sp = (vendor.slug || vendor.business_name || 'ven').replace(/[^a-z0-9]/gi, '').substring(0, 4).toUpperCase();
-      vendorCode = `HP-${sp || 'VEN'}-${Math.floor(1000 + Math.random() * 9000)}`;
-      await db.query('UPDATE vendors SET vendor_code = ? WHERE id = ?', [vendorCode, vendor.id]);
-    }
-
-    const token = generateActivationToken(vendor.id, vendorCode);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id})`);
-
-    res.json({ success: true, token, vendor_name: vendor.business_name, vendor_code: vendorCode, expires_at: expiresAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
