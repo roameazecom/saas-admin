@@ -1,4 +1,14 @@
 import { getDb, cors } from './_db.js';
+import crypto from 'crypto';
+
+const TOKEN_SECRET = process.env.ACTIVATION_TOKEN_SECRET || 'happypie-saas-activation-secret-2026';
+
+function generateActivationToken(vendorId, vendorCode) {
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+  const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, expiresAt })).toString('base64url');
+  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
 
 export default async function handler(req, res) {
   cors(res);
@@ -6,6 +16,54 @@ export default async function handler(req, res) {
 
   const db = getDb();
 
+  // ── POST /api/vendors?action=generate-token&vendorId=X ─────────────────────
+  if (req.method === 'POST' && req.query.action === 'generate-token') {
+    try {
+      const vendorId = req.query.vendorId;
+      if (!vendorId) return res.status(400).json({ error: 'vendorId is required' });
+
+      const [rows] = await db.query(
+        'SELECT id, business_name, vendor_code, slug, email FROM vendors WHERE id = ?',
+        [vendorId]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Vendor not found' });
+
+      const vendor = rows[0];
+
+      // Auto-assign vendor_code if missing (legacy vendors)
+      let vendorCode = vendor.vendor_code;
+      if (!vendorCode) {
+        const slugPart = (vendor.slug || vendor.business_name || 'ven')
+          .replace(/[^a-z0-9]/gi, '').substring(0, 4).toUpperCase();
+        vendorCode = `HP-${slugPart || 'VEN'}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await db.query('UPDATE vendors SET vendor_code = ? WHERE id = ?', [vendorCode, vendor.id]);
+      }
+
+      const token = generateActivationToken(parseInt(vendorId), vendorCode);
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Audit log (non-fatal)
+      try {
+        await db.query(
+          'INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)',
+          ['Super Admin', 'GENERATE_ACTIVATION_TOKEN', `Token generated for "${vendor.business_name}" (#${vendor.id})`]
+        );
+      } catch (e) { /* ignore */ }
+
+      return res.status(200).json({
+        success: true,
+        token,
+        vendor_name: vendor.business_name,
+        vendor_code: vendorCode,
+        expires_at: expiresAt,
+        instructions: 'Share this token with the restaurant owner. They paste it in the POS Setup Wizard on first launch. Valid for 7 days.'
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // ── GET /api/vendors ────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     try {
       const [rows] = await db.query(`
@@ -30,6 +88,7 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── POST /api/vendors ── Create new vendor ──────────────────────────────────
   if (req.method === 'POST') {
     try {
       const {
@@ -46,7 +105,6 @@ export default async function handler(req, res) {
       const vendor_code = `HP-VEN-${Date.now().toString().slice(-5)}`;
       const tenant_id = `TEN-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
 
-      // Insert vendor
       const [result] = await db.query(
         `INSERT INTO vendors (business_name, vendor_code, tenant_id, slug, email, phone, status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features)
          VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 'ACTIVE', ?)`,
@@ -61,7 +119,6 @@ export default async function handler(req, res) {
 
       const vendorId = result.insertId;
 
-      // Create restaurant_details for this vendor if table exists
       try {
         await db.query(
           `INSERT INTO restaurant_details (vendor_id, name, phone, tax_percent, daily_pin) VALUES (?, ?, ?, ?, ?)`,
@@ -69,7 +126,6 @@ export default async function handler(req, res) {
         );
       } catch (e) { /* ignore if table missing */ }
 
-      // Create admin user for this vendor
       try {
         await db.query(
           `INSERT INTO users (vendor_id, name, email, password, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`,
@@ -77,7 +133,6 @@ export default async function handler(req, res) {
         );
       } catch (e) { /* ignore */ }
 
-      // Log action
       try {
         await db.query(
           `INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)`,

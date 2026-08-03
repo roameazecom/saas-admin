@@ -259,7 +259,8 @@ export default function SaaSAdminDashboard() {
   const handleGenerateToken = async (vendor) => {
     setTokenLoading(true);
     try {
-      const res = await axios.post(`${API}/api/vendors/${vendor.id}/generate-token`);
+      // Uses existing /api/vendors function with action query param (Vercel Hobby plan: 12 function limit)
+      const res = await axios.post(`${API}/api/vendors?action=generate-token&vendorId=${vendor.id}`);
       setGeneratedToken({ ...res.data, vendor_name: vendor.business_name });
       setIsTokenModalOpen(true);
       setTokenCopied(false);
