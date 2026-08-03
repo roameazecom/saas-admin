@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: happypie-saas-admin
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node render-server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: CLOUD_DB_HOST
+        sync: false
+      - key: CLOUD_DB_PORT
+        sync: false
+      - key: CLOUD_DB_USER
+        sync: false
+      - key: CLOUD_DB_PASSWORD
+        sync: false
+      - key: CLOUD_DB_NAME
+        sync: false
+      - key: CLOUD_DB_SSL
+        value: "true"
+      - key: ACTIVATION_TOKEN_SECRET
+        sync: false
