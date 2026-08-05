@@ -265,7 +265,8 @@ export default function SaaSAdminDashboard() {
       setTokenCopied(false);
       toast.success('Activation token generated! Share it with the restaurant owner.');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to generate activation token');
+      const msg = err.response?.data?.error;
+      toast.error(typeof msg === 'string' ? msg : msg?.message || err.message || 'Failed to generate activation token');
     } finally {
       setTokenLoading(false);
     }
