@@ -892,6 +892,47 @@ export default function SaaSAdminDashboard() {
                       </button>
                     </div>
 
+                    {/* Support PIN Info */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex justify-between items-center flex-wrap gap-4">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">SaaS Support Sync PIN</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-sm font-black text-indigo-400 tracking-wider font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-800">{selectedVendor.support_pin || '9999'}</span>
+                        </div>
+                        <span className="text-xs text-slate-400 block mt-1.5">
+                          Use this PIN on the POS settings page to force feature updates.
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          const newPin = window.prompt("Enter new Support PIN (numeric/alphanumeric, max 10 chars):", selectedVendor.support_pin || '9999');
+                          if (newPin !== null) {
+                            const trimmed = newPin.trim();
+                            if (!trimmed) {
+                              toast.error("PIN cannot be empty");
+                              return;
+                            }
+                            try {
+                              await axios.put(`${API}/api/vendors/${selectedVendor.id}`, {
+                                ...selectedVendor,
+                                support_pin: trimmed
+                              });
+                              setSelectedVendor(prev => ({ ...prev, support_pin: trimmed }));
+                              setVendors(prev => prev.map(v => v.id === selectedVendor.id ? { ...v, support_pin: trimmed } : v));
+                              toast.success("Support PIN updated successfully!");
+                            } catch (err) {
+                              console.error(err);
+                              toast.error(err.response?.data?.error || "Failed to update Support PIN");
+                            }
+                          }
+                        }}
+                        className="px-3.5 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Key className="w-3.5 h-3.5" /> Update PIN
+                      </button>
+                    </div>
+
                     {/* Stats for Selected Vendor */}
                     {selectedVendorStats && (
                       <div className="grid grid-cols-3 gap-3">
