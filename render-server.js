@@ -1,8 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// HappyPie SaaS Admin — Express Server for Render Deployment
-// Replaces Vercel serverless functions with a single Express app.
-// Serves both the React SPA (dist/) and all /api/* routes.
-// ─────────────────────────────────────────────────────────────────────────────
+process.env.TZ = 'Asia/Kolkata';
 import express from 'express';
 import mysql from 'mysql2/promise';
 import crypto from 'crypto';
