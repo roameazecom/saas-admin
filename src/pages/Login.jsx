@@ -153,7 +153,7 @@ export default function Login() {
         </div>
 
         <p className="relative z-10 text-xs font-bold tracking-widest uppercase text-surface-400">
-          Made by Gaurav Yadav
+          Powered by HappyPie
         </p>
       </div>
 
@@ -296,7 +296,7 @@ export default function Login() {
 
         {/* Mobile footer */}
         <div className="lg:hidden absolute bottom-4 text-xs font-bold tracking-widest uppercase text-surface-400">
-          Made by Gaurav Yadav
+          Powered by HappyPie
         </div>
       </div>
 
