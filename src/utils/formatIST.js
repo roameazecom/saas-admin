@@ -11,18 +11,29 @@ const LOCALE = 'en-IN';
  * Normalize a date string from MySQL (which may lack timezone info) to a proper Date object in IST.
  * MySQL returns "2026-06-28 12:30:00" (no timezone). We treat this as IST directly.
  */
-function parseDate(dateStr) {
+export function parseDate(dateInput) {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return dateInput;
+  if (typeof dateInput === 'number') return new Date(dateInput);
+
+  let dateStr = String(dateInput).trim();
   if (!dateStr) return new Date();
-  if (dateStr instanceof Date) return dateStr;
-  // If it's already ISO with 'T' and timezone info, parse directly
-  if (typeof dateStr === 'string' && dateStr.includes('T')) {
-    return new Date(dateStr);
+
+  if (/^\d+$/.test(dateStr)) {
+    return new Date(Number(dateStr));
   }
-  // MySQL format: "2026-06-28 12:30:00" — treat as IST by appending +05:30
-  if (typeof dateStr === 'string' && dateStr.includes(' ')) {
-    return new Date(dateStr.replace(' ', 'T') + '+05:30');
+
+  if (!dateStr.includes('T') && dateStr.includes(' ')) {
+    dateStr = dateStr.replace(' ', 'T');
+    if (!dateStr.includes('+') && !dateStr.includes('Z')) {
+      dateStr += '+05:30';
+    }
+  } else if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
+    dateStr += '+05:30';
   }
-  return new Date(dateStr);
+
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 /**
