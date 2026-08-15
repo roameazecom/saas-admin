@@ -25,11 +25,11 @@ export function parseDate(dateInput) {
 
   if (!dateStr.includes('T') && dateStr.includes(' ')) {
     dateStr = dateStr.replace(' ', 'T');
-    if (!dateStr.includes('+') && !dateStr.includes('Z')) {
-      dateStr += '+05:30';
-    }
-  } else if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
-    dateStr += '+05:30';
+  }
+
+  const timePart = dateStr.slice(10);
+  if (!timePart.includes('Z') && !timePart.includes('+') && !timePart.includes('-')) {
+    dateStr += 'Z';
   }
 
   const parsed = new Date(dateStr);
