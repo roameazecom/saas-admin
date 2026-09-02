@@ -167,6 +167,28 @@ app.put('/api/vendors/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── POST /api/vendors/update — Frontend-friendly alias for PUT /api/vendors/:id ─
+app.post('/api/vendors/update', async (req, res) => {
+  try {
+    const { id, status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features } = req.body;
+    if (!id) return res.status(400).json({ error: 'id is required' });
+    const updates = []; const values = [];
+    if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+    if (plan_name !== undefined) { updates.push('plan_name = ?'); values.push(plan_name); }
+    if (plan_price !== undefined) { updates.push('plan_price = ?'); values.push(plan_price); }
+    if (renewal_date !== undefined) { updates.push('renewal_date = ?'); values.push(renewal_date); }
+    if (grace_period_days !== undefined) { updates.push('grace_period_days = ?'); values.push(grace_period_days); }
+    if (subscription_status !== undefined) { updates.push('subscription_status = ?'); values.push(subscription_status); }
+    if (features !== undefined) { updates.push('features = ?'); values.push(JSON.stringify(features)); }
+    if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
+    values.push(id);
+    await getDb().query(`UPDATE vendors SET ${updates.join(', ')} WHERE id = ?`, values);
+    await audit('UPDATE_VENDOR', `Updated vendor #${id}`);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
 // ── GET /api/vendors/:id/stats ────────────────────────────────────────────────
 app.get('/api/vendors/:id/stats', async (req, res) => {
   try {
@@ -262,6 +284,14 @@ app.post('/api/announcements', async (req, res) => {
     res.json({ success: true, id: r.insertId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+app.delete('/api/announcements/:id', async (req, res) => {
+  try {
+    await getDb().query('DELETE FROM saas_announcements WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ── GET /api/audit-logs ───────────────────────────────────────────────────────
 app.get('/api/audit-logs', async (req, res) => {

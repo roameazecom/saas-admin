@@ -5,12 +5,13 @@ import {
   MapPin, Mail, Phone, Settings, Layers, Lock, Unlock, Server, Activity, 
   Wrench, Headphones, UserCheck, AlertTriangle, Download, Copy, Check, Terminal,
   CreditCard, MessageSquare, Bell, FileText, Search, RefreshCw, ExternalLink,
-  MessageCircle, DollarSign, TrendingUp, Zap, Power, AlertCircle, Eye, Key
+  MessageCircle, DollarSign, TrendingUp, Zap, Power, AlertCircle, Eye, Key, LogOut
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
-export default function SaaSAdminDashboard() {
+export default function SaaSAdminDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState('analytics'); // 'analytics', 'clients', 'plans', 'tickets', 'announcements', 'audit_logs', 'saas_team', 'telemetry'
+  const saasUser = JSON.parse(localStorage.getItem('saas_user') || '{}');
   const [vendors, setVendors] = useState([]);
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [outlets, setOutlets] = useState([]);
@@ -92,14 +93,14 @@ export default function SaaSAdminDashboard() {
 
   const fetchOutlets = async (vendorId) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/outlets?vendor_id=${vendorId}`);
+      const res = await axios.get(`${API}/api/vendors/${vendorId}/outlets`);
       if (Array.isArray(res.data)) setOutlets(res.data);
     } catch (err) {}
   };
 
   const fetchVendorStats = async (vendorId) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/stats?vendor_id=${vendorId}`);
+      const res = await axios.get(`${API}/api/vendors/${vendorId}/stats`);
       if (res.data) setSelectedVendorStats(res.data);
     } catch (err) {}
   };
@@ -246,7 +247,7 @@ export default function SaaSAdminDashboard() {
 
   const handleGenerateConfig = async (vendor) => {
     try {
-      const res = await axios.get(`${API}/api/vendors/config?vendor_id=${vendor.id}`);
+      const res = await axios.get(`${API}/api/vendors/${vendor.id}/config`);
       setGeneratedConfig(res.data);
       setIsConfigModalOpen(true);
       setConfigCopied(false);
@@ -297,7 +298,7 @@ export default function SaaSAdminDashboard() {
     const name = formData.get('name');
 
     try {
-      await axios.post(`${API}/api/vendors/outlets`, { name, vendor_id: selectedVendor.id });
+      await axios.post(`${API}/api/vendors/${selectedVendor.id}/outlets`, { name });
       toast.success(`New branch "${name}" added to ${selectedVendor.business_name}!`);
       setIsAddOutletOpen(false);
       fetchOutlets(selectedVendor.id);
@@ -361,7 +362,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteAnnouncement = async (id) => {
     if (window.confirm('Delete this broadcast announcement?')) {
       try {
-        await axios.post(`${API}/api/announcements`, { action: 'delete', id });
+        await axios.delete(`${API}/api/announcements/${id}`);
         toast.success('Announcement removed');
         fetchAnnouncements();
       } catch (err) {
@@ -396,7 +397,7 @@ export default function SaaSAdminDashboard() {
   const handleDeleteTeamMember = async (t) => {
     if (window.confirm(`Delete SaaS staff account for "${t.name}"?`)) {
       try {
-        await axios.post(`${API}/api/team`, { action: 'delete', id: t.id });
+        await axios.delete(`${API}/api/team/${t.id}`);
         toast.success('Team member removed');
         fetchSaasTeam();
         fetchAuditLogs();
@@ -575,6 +576,25 @@ export default function SaaSAdminDashboard() {
               <Plus className="w-4 h-4" /> Add SaaS Staff
             </button>
           )}
+
+          {/* Logged-in user + Logout */}
+          <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-700">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-xs font-bold text-slate-200">{saasUser?.name || 'Admin'}</span>
+              <span className="text-[10px] text-slate-500 capitalize">{saasUser?.role?.replace(/_/g,' ') || 'Super Admin'}</span>
+            </div>
+            <button
+              onClick={() => {
+                if (window.confirm('Logout from SaaS Admin Panel?')) {
+                  if (onLogout) onLogout();
+                }
+              }}
+              title="Logout"
+              className="p-2.5 bg-red-900/40 hover:bg-red-800/60 text-red-400 hover:text-red-300 rounded-xl transition cursor-pointer border border-red-800/30"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 

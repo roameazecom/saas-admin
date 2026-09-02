@@ -1,12 +1,22 @@
 import { getDb, cors } from '../../_db.js';
 import crypto from 'crypto';
 
-const TOKEN_SECRET = process.env.ACTIVATION_TOKEN_SECRET || 'happypie-saas-activation-secret-2026';
+function getActivationTokenSecret() {
+  const secret = process.env.ACTIVATION_TOKEN_SECRET;
+  if (!secret || typeof secret !== 'string' || !secret.trim()) {
+    const err = new Error('ACTIVATION_TOKEN_SECRET configuration missing in server environment.');
+    err.code = 'ACTIVATION_SECRET_MISSING';
+    err.status = 500;
+    throw err;
+  }
+  return secret.trim();
+}
 
 function generateActivationToken(vendorId, vendorCode) {
+  const secret = getActivationTokenSecret();
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
   const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, expiresAt })).toString('base64url');
-  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 

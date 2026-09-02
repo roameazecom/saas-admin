@@ -119,19 +119,33 @@ export default async function handler(req, res) {
 
       const vendorId = result.insertId;
 
+      // 1. Create Restaurant Details in Cloud
       try {
         await db.query(
-          `INSERT INTO restaurant_details (vendor_id, name, phone, tax_percent, daily_pin) VALUES (?, ?, ?, ?, ?)`,
-          [vendorId, business_name.trim(), phone || '', tax_percent || 5.00, '1234']
+          `INSERT INTO restaurant_details (vendor_id, name, phone, email, tax_percent, daily_pin) VALUES (?, ?, ?, ?, ?, ?)`,
+          [vendorId, business_name.trim(), phone || '', email || '', tax_percent !== undefined ? tax_percent : 0.00, '1234']
         );
-      } catch (e) { /* ignore if table missing */ }
+      } catch (e) {
+        console.error('Failed to create restaurant_details:', e.message);
+      }
 
+      // 2. Create Default Branch Location in Cloud
       try {
         await db.query(
-          `INSERT INTO users (vendor_id, name, email, password, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`,
+          `INSERT INTO locations (vendor_id, name) VALUES (?, ?)`,
+          [vendorId, 'Main Outlet']
+        );
+      } catch (e) {}
+
+      // 3. Create Admin User in Cloud
+      try {
+        await db.query(
+          `INSERT INTO users (vendor_id, name, email, password_hash, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`,
           [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, owner_password || 'admin123']
         );
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        console.error('Failed to create initial admin user:', e.message);
+      }
 
       try {
         await db.query(
