@@ -1,4 +1,5 @@
 import { getDb, cors } from '../_db.js';
+import { requireSaasAdminAuth } from '../_auth.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -9,6 +10,8 @@ export default async function handler(req, res) {
 
   // Handle all PUT requests under /api/vendors/update or /api/vendors/[id]
   if (req.method === 'PUT' || req.method === 'POST') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const vendorId = id || req.body.id || req.body.vendor_id;
       const { status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features } = req.body;
@@ -32,7 +35,7 @@ export default async function handler(req, res) {
       try {
         await db.query(
           `INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)`,
-          ['Super Admin', 'UPDATE_VENDOR', `Updated vendor #${vendorId}: ${updates.join(', ')}`]
+          [admin.email || 'SaaS Admin', 'UPDATE_VENDOR', `Updated vendor #${vendorId}: ${updates.join(', ')}`]
         );
       } catch (e) {}
 
@@ -59,6 +62,8 @@ export default async function handler(req, res) {
 
   // DELETE /api/vendors/[id]
   if (req.method === 'DELETE') {
+    const admin = requireSaasAdminAuth(req, res, ['super_admin']);
+    if (!admin) return;
     try {
       await db.query('DELETE FROM vendors WHERE id = ?', [id]);
       return res.status(200).json({ success: true });

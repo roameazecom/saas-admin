@@ -4,35 +4,28 @@ import './index.css'
 import App from './App.jsx'
 import axios from 'axios'
 
-// Legacy URL migration & Global Axios interceptor to dynamically rewrite server URL
-if (typeof window !== 'undefined') {
-  const saved = localStorage.getItem('POS_SERVER_URL');
-  if (saved && saved.includes('darkblue-mosquito')) {
-    localStorage.setItem('POS_SERVER_URL', 'https://apn.happypiecafe.in');
-  }
-}
-
 axios.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    let targetServer = localStorage.getItem('POS_SERVER_URL');
-    if (!targetServer) {
-      const hostname = window.location.hostname;
-      const port = window.location.port;
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
-        targetServer = `http://${hostname}${port ? ':' + port : ''}`;
-      }
-    }
-    if (targetServer) {
-      const cleanServer = targetServer.trim().replace(/\/$/, "");
-      const currentUrl = config.url || '';
-      const apiIndex = currentUrl.indexOf('/api');
-      if (apiIndex !== -1) {
-        config.url = `${cleanServer}${currentUrl.substring(apiIndex)}`;
-      }
+    const token = localStorage.getItem('saas_token');
+    const currentUrl = config.url || '';
+    if (token && currentUrl.includes('/api')) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   return config;
 }, (error) => {
+  return Promise.reject(error);
+});
+
+axios.interceptors.response.use((response) => response, (error) => {
+  if (typeof window !== 'undefined' && [401, 403].includes(error.response?.status)) {
+    localStorage.removeItem('saas_token');
+    localStorage.removeItem('saas_user');
+    if (!window.location.pathname.includes('/login')) {
+      window.location.href = '/login';
+    }
+  }
   return Promise.reject(error);
 });
 

@@ -1,4 +1,5 @@
 import { getDb, cors } from './_db.js';
+import { requireSaasAdminAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -24,6 +25,8 @@ export default async function handler(req, res) {
 
   // POST create plan
   if (req.method === 'POST') {
+    const admin = requireSaasAdminAuth(req, res, ['super_admin']);
+    if (!admin) return;
     try {
       const { name, price, billing_cycle, features_included } = req.body;
       const [result] = await db.query(

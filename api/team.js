@@ -1,4 +1,5 @@
 import { getDb, cors } from './_db.js';
+import { hashPassword, requireSaasAdminAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -8,6 +9,8 @@ export default async function handler(req, res) {
 
   // GET all team members
   if (req.method === 'GET') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const [team] = await db.query(
         'SELECT id, name, email, role, phone, status, created_at FROM saas_users ORDER BY id ASC'
@@ -20,6 +23,8 @@ export default async function handler(req, res) {
 
   // POST create or delete team member
   if (req.method === 'POST') {
+    const admin = requireSaasAdminAuth(req, res, ['super_admin']);
+    if (!admin) return;
     try {
       const { action, id, name, email, password, role, phone } = req.body;
 
@@ -35,7 +40,7 @@ export default async function handler(req, res) {
       }
       const [result] = await db.query(
         `INSERT INTO saas_users (name, email, password_hash, role, phone, status) VALUES (?, ?, ?, ?, ?, 'active')`,
-        [name.trim(), email.trim().toLowerCase(), password.trim(), role || 'saas_manager', phone || null]
+        [name.trim(), email.trim().toLowerCase(), hashPassword(password), role || 'saas_manager', phone || null]
       );
       return res.status(200).json({
         id: result.insertId,

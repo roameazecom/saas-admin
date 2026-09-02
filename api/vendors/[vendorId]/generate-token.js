@@ -1,16 +1,6 @@
 import { getDb, cors } from '../../_db.js';
 import crypto from 'crypto';
-
-function getActivationTokenSecret() {
-  const secret = process.env.ACTIVATION_TOKEN_SECRET;
-  if (!secret || typeof secret !== 'string' || !secret.trim()) {
-    const err = new Error('ACTIVATION_TOKEN_SECRET configuration missing in server environment.');
-    err.code = 'ACTIVATION_SECRET_MISSING';
-    err.status = 500;
-    throw err;
-  }
-  return secret.trim();
-}
+import { getActivationTokenSecret, requireSaasAdminAuth } from '../../_auth.js';
 
 function generateActivationToken(vendorId, vendorCode) {
   const secret = getActivationTokenSecret();
@@ -24,6 +14,8 @@ export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const admin = requireSaasAdminAuth(req, res);
+  if (!admin) return;
 
   try {
     const { vendorId } = req.query;
@@ -57,7 +49,7 @@ export default async function handler(req, res) {
     try {
       await db.query(
         'INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)',
-        ['Super Admin', 'GENERATE_ACTIVATION_TOKEN', `Generated setup token for "${vendor.business_name}" (#${vendor.id})`]
+        [admin.email || 'SaaS Admin', 'GENERATE_ACTIVATION_TOKEN', `Generated setup token for "${vendor.business_name}" (#${vendor.id})`]
       );
     } catch (e) { /* non-fatal */ }
 

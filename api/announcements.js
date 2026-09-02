@@ -1,4 +1,5 @@
 import { getDb, cors } from './_db.js';
+import { requireSaasAdminAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -20,6 +21,8 @@ export default async function handler(req, res) {
 
   // POST create or delete announcement
   if (req.method === 'POST') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const { action, id, title, message, target_vendor_id, created_by } = req.body;
 
@@ -32,7 +35,7 @@ export default async function handler(req, res) {
       // Create announcement
       const [result] = await db.query(
         `INSERT INTO saas_announcements (title, message, target_vendor_id, created_by) VALUES (?, ?, ?, ?)`,
-        [title, message, target_vendor_id || null, created_by || 'Super Admin']
+        [title, message, target_vendor_id || null, created_by || admin.email || 'SaaS Admin']
       );
       return res.status(200).json({ success: true, id: result.insertId });
     } catch (err) {

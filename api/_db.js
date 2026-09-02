@@ -5,6 +5,12 @@ let pool = null;
 export function getDb() {
   if (pool) return pool;
 
+  const required = ['CLOUD_DB_HOST', 'CLOUD_DB_USER', 'CLOUD_DB_PASSWORD', 'CLOUD_DB_NAME'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Cloud DB configuration missing: ${missing.join(', ')}`);
+  }
+
   pool = mysql.createPool({
     host: process.env.CLOUD_DB_HOST,
     port: parseInt(process.env.CLOUD_DB_PORT) || 4000,
@@ -15,7 +21,7 @@ export function getDb() {
     connectionLimit: 5,
     timezone: '+05:30',
     dateStrings: true,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.CLOUD_DB_SSL === 'false' ? undefined : { rejectUnauthorized: false }
   });
 
   return pool;

@@ -1,12 +1,12 @@
 import { getDb, cors } from './_db.js';
 import crypto from 'crypto';
-
-const TOKEN_SECRET = process.env.ACTIVATION_TOKEN_SECRET || 'happypie-saas-activation-secret-2026';
+import { getActivationTokenSecret, hashPassword, requireSaasAdminAuth } from './_auth.js';
 
 function generateActivationToken(vendorId, vendorCode) {
+  const tokenSecret = getActivationTokenSecret();
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
   const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, expiresAt })).toString('base64url');
-  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+  const sig = crypto.createHmac('sha256', tokenSecret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
 
@@ -18,6 +18,8 @@ export default async function handler(req, res) {
 
   // ── POST /api/vendors?action=generate-token&vendorId=X ─────────────────────
   if (req.method === 'POST' && req.query.action === 'generate-token') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const vendorId = req.query.vendorId;
       if (!vendorId) return res.status(400).json({ error: 'vendorId is required' });
@@ -46,7 +48,7 @@ export default async function handler(req, res) {
       try {
         await db.query(
           'INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)',
-          ['Super Admin', 'GENERATE_ACTIVATION_TOKEN', `Token generated for "${vendor.business_name}" (#${vendor.id})`]
+          [admin.email || 'SaaS Admin', 'GENERATE_ACTIVATION_TOKEN', `Token generated for "${vendor.business_name}" (#${vendor.id})`]
         );
       } catch (e) { /* ignore */ }
 
@@ -90,6 +92,8 @@ export default async function handler(req, res) {
 
   // ── POST /api/vendors ── Create new vendor ──────────────────────────────────
   if (req.method === 'POST') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const {
         business_name, slug, email, phone, plan_name, plan_price,
@@ -139,9 +143,10 @@ export default async function handler(req, res) {
 
       // 3. Create Admin User in Cloud
       try {
+        const initialPassword = owner_password || crypto.randomBytes(12).toString('base64url');
         await db.query(
           `INSERT INTO users (vendor_id, name, email, password_hash, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`,
-          [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, owner_password || 'admin123']
+          [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, hashPassword(initialPassword)]
         );
       } catch (e) {
         console.error('Failed to create initial admin user:', e.message);
@@ -150,7 +155,7 @@ export default async function handler(req, res) {
       try {
         await db.query(
           `INSERT INTO saas_audit_logs (admin_name, action, details) VALUES (?, ?, ?)`,
-          ['Super Admin', 'ONBOARD_VENDOR', `Onboarded new vendor: ${business_name} (ID: ${vendorId})`]
+          [admin.email || 'SaaS Admin', 'ONBOARD_VENDOR', `Onboarded new vendor: ${business_name} (ID: ${vendorId})`]
         );
       } catch (e) { /* ignore */ }
 

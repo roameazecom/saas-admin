@@ -1,4 +1,5 @@
 import { getDb, cors } from './_db.js';
+import { requireSaasAdminAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   cors(res);
@@ -25,6 +26,8 @@ export default async function handler(req, res) {
 
       // Handle ticket status update via POST
       if (status && (ticketId || ticket_id || id)) {
+        const admin = requireSaasAdminAuth(req, res);
+        if (!admin) return;
         const targetId = ticketId || ticket_id || id;
         await db.query('UPDATE saas_tickets SET status = ? WHERE id = ?', [status, targetId]);
         return res.status(200).json({ success: true, message: `Ticket #${targetId} updated to ${status}` });

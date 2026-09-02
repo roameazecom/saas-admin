@@ -5,6 +5,13 @@ import mysql from 'mysql2/promise';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  getActivationTokenSecret,
+  hashPassword,
+  verifyPassword,
+  signSaasToken,
+  requireSaasAdminAuth
+} from './api/_auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -27,6 +34,11 @@ app.use((req, res, next) => {
 let _pool = null;
 function getDb() {
   if (_pool) return _pool;
+  const required = ['CLOUD_DB_HOST', 'CLOUD_DB_USER', 'CLOUD_DB_PASSWORD', 'CLOUD_DB_NAME'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Cloud DB configuration missing: ${missing.join(', ')}`);
+  }
   _pool = mysql.createPool({
     host: process.env.CLOUD_DB_HOST,
     port: parseInt(process.env.CLOUD_DB_PORT) || 4000,
@@ -37,19 +49,23 @@ function getDb() {
     connectionLimit: 5,
     timezone: '+05:30',
     dateStrings: true,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.CLOUD_DB_SSL === 'false' ? undefined : { rejectUnauthorized: false }
   });
   return _pool;
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
-const TOKEN_SECRET = process.env.ACTIVATION_TOKEN_SECRET || 'happypie-saas-activation-secret-2026';
-
 function generateActivationToken(vendorId, vendorCode) {
+  const secret = getActivationTokenSecret();
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
   const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, expiresAt })).toString('base64url');
-  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
+}
+
+function requireSaasAdminMiddleware(req, res, next) {
+  const session = requireSaasAdminAuth(req, res);
+  if (session) next();
 }
 
 // ── Audit helper ──────────────────────────────────────────────────────────────
@@ -71,15 +87,51 @@ app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    
+    // Ensure ACTIVATION_TOKEN_SECRET is present (fail-closed)
+    getActivationTokenSecret();
+
     const db = getDb();
     const [users] = await db.query(
-      'SELECT id, name, email, role, phone, status FROM saas_users WHERE LOWER(TRIM(email)) = ? AND password_hash = ?',
-      [String(email).trim().toLowerCase(), String(password).trim()]
+      'SELECT id, name, email, role, phone, status, password_hash FROM saas_users WHERE LOWER(TRIM(email)) = ?',
+      [String(email).trim().toLowerCase()]
     );
     if (!users.length) return res.status(401).json({ error: 'Invalid email or password' });
-    if (users[0].status === 'suspended') return res.status(403).json({ error: 'Account suspended' });
-    res.json({ success: true, user: users[0], token: `saas-token-${users[0].id}-${Date.now()}` });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const user = users[0];
+    if (user.status === 'suspended') return res.status(403).json({ error: 'Account suspended' });
+
+    const authRes = verifyPassword(password, user.password_hash);
+    if (!authRes.ok) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (authRes.upgradeHash) {
+      try {
+        await db.query('UPDATE saas_users SET password_hash = ? WHERE id = ?', [authRes.upgradeHash, user.id]);
+        console.log(`[SaaS Auth] Transparently upgraded password hash for admin user #${user.id}`);
+      } catch (e) {
+        console.warn('[SaaS Auth] Could not persist upgraded password hash:', e.message);
+      }
+    }
+
+    // Sanitize user object (never leak credentials or hashes)
+    const sanitizedUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      phone: user.phone,
+      status: user.status
+    };
+
+    const token = signSaasToken(sanitizedUser);
+    res.json({ success: true, user: sanitizedUser, token });
+  } catch (e) {
+    if (e.code === 'ACTIVATION_TOKEN_SECRET_MISSING') {
+      return res.status(500).json({ error: 'SaaS security configuration error: ACTIVATION_TOKEN_SECRET is missing.', code: 'SECRET_REQUIRED' });
+    }
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── GET /api/vendors ──────────────────────────────────────────────────────────
@@ -100,7 +152,7 @@ app.get('/api/vendors', async (req, res) => {
 });
 
 // ── POST /api/vendors/:id/generate-token ─────────────────────────────────────
-app.post('/api/vendors/:id/generate-token', async (req, res) => {
+app.post('/api/vendors/:id/generate-token', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const db = getDb();
     const [rows] = await db.query('SELECT id, business_name, vendor_code, slug, email FROM vendors WHERE id = ?', [req.params.id]);
@@ -116,14 +168,14 @@ app.post('/api/vendors/:id/generate-token', async (req, res) => {
 
     const token = generateActivationToken(vendor.id, vendorCode);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id})`);
+    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id}) by ${req.saasAdmin?.email || 'admin'}`);
 
     res.json({ success: true, token, vendor_name: vendor.business_name, vendor_code: vendorCode, expires_at: expiresAt });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── POST /api/vendors — Create vendor (must come AFTER /:id/generate-token) ──
-app.post('/api/vendors', async (req, res) => {
+app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { business_name, slug, email, phone, plan_name, plan_price, renewal_date, grace_period_days, features, owner_name, owner_password, tax_percent } = req.body;
     if (!business_name || !slug) return res.status(400).json({ error: 'business_name and slug required' });
@@ -140,15 +192,17 @@ app.post('/api/vendors', async (req, res) => {
        JSON.stringify(features || { takeaway: true, dinein: true, billing: true, kds: true, waiter: true, inventory: true, hr: true })]
     );
     const vendorId = result.insertId;
+    const initialPassword = owner_password || crypto.randomBytes(12).toString('base64url');
+    const ownerPasswordHash = hashPassword(initialPassword);
     try { await db.query(`INSERT INTO restaurant_details (vendor_id, name, phone, tax_percent, daily_pin) VALUES (?, ?, ?, ?, ?)`, [vendorId, business_name.trim(), phone || '', tax_percent || 5.00, '1234']); } catch (e) {}
-    try { await db.query(`INSERT INTO users (vendor_id, name, email, password, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`, [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, owner_password || 'admin123']); } catch (e) {}
+    try { await db.query(`INSERT INTO users (vendor_id, name, email, password_hash, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`, [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, ownerPasswordHash]); } catch (e) {}
     await audit('ONBOARD_VENDOR', `Onboarded: ${business_name} (ID: ${vendorId})`);
     res.json({ success: true, id: vendorId, vendor_code, tenant_id, message: `${business_name} onboarded successfully` });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── PUT /api/vendors/:id ──────────────────────────────────────────────────────
-app.put('/api/vendors/:id', async (req, res) => {
+app.put('/api/vendors/:id', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features } = req.body;
     const updates = []; const values = [];
@@ -168,7 +222,7 @@ app.put('/api/vendors/:id', async (req, res) => {
 });
 
 // ── POST /api/vendors/update — Frontend-friendly alias for PUT /api/vendors/:id ─
-app.post('/api/vendors/update', async (req, res) => {
+app.post('/api/vendors/update', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { id, status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features } = req.body;
     if (!id) return res.status(400).json({ error: 'id is required' });
@@ -218,7 +272,7 @@ app.get('/api/vendors/:id/outlets', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/vendors/:id/outlets', async (req, res) => {
+app.post('/api/vendors/:id/outlets', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
@@ -249,6 +303,8 @@ app.post('/api/tickets', async (req, res) => {
     const { ticketId, ticket_id, id, status, vendor_id, vendor_name, subject, description, priority } = req.body;
     const db = getDb();
     if (status && (ticketId || ticket_id || id)) {
+      const session = requireSaasAdminAuth(req, res);
+      if (!session) return;
       await db.query('UPDATE saas_tickets SET status = ? WHERE id = ?', [status, ticketId || ticket_id || id]);
       return res.json({ success: true });
     }
@@ -263,7 +319,7 @@ app.get('/api/plans', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/plans', async (req, res) => {
+app.post('/api/plans', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { name, price, billing_cycle, features_included } = req.body;
     const [r] = await getDb().query('INSERT INTO saas_plans (name, price, billing_cycle, features_included) VALUES (?, ?, ?, ?)', [name, price, billing_cycle || 'monthly', JSON.stringify(features_included || {})]);
@@ -277,15 +333,15 @@ app.get('/api/announcements', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/announcements', async (req, res) => {
+app.post('/api/announcements', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { title, message } = req.body;
-    const [r] = await getDb().query('INSERT INTO saas_announcements (title, message, created_by) VALUES (?, ?, ?)', [title, message, 'Super Admin']);
+    const [r] = await getDb().query('INSERT INTO saas_announcements (title, message, created_by) VALUES (?, ?, ?)', [title, message, req.saasAdmin?.email || 'Super Admin']);
     res.json({ success: true, id: r.insertId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/announcements/:id', async (req, res) => {
+app.delete('/api/announcements/:id', requireSaasAdminMiddleware, async (req, res) => {
   try {
     await getDb().query('DELETE FROM saas_announcements WHERE id = ?', [req.params.id]);
     res.json({ success: true });
@@ -305,7 +361,7 @@ app.get('/api/team', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/team', async (req, res) => {
+app.post('/api/team', requireSaasAdminMiddleware, async (req, res) => {
   try {
     const { name, email, password, role, phone, memberId, status } = req.body;
     const db = getDb();
@@ -314,12 +370,13 @@ app.post('/api/team', async (req, res) => {
       return res.json({ success: true });
     }
     if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
-    const [r] = await db.query('INSERT INTO saas_users (name, email, password_hash, role, phone, status) VALUES (?, ?, ?, ?, ?, ?)', [name, email, password, role || 'saas_manager', phone || null, 'active']);
+    const passwordHash = hashPassword(password);
+    const [r] = await db.query('INSERT INTO saas_users (name, email, password_hash, role, phone, status) VALUES (?, ?, ?, ?, ?, ?)', [name, email, passwordHash, role || 'saas_manager', phone || null, 'active']);
     res.json({ success: true, id: r.insertId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/team/:id', async (req, res) => {
+app.delete('/api/team/:id', requireSaasAdminMiddleware, async (req, res) => {
   try { await getDb().query('DELETE FROM saas_users WHERE id = ?', [req.params.id]); res.json({ success: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
