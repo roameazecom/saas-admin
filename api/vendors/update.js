@@ -14,11 +14,19 @@ export default async function handler(req, res) {
     if (!admin) return;
     try {
       const vendorId = id || req.body.id || req.body.vendor_id;
-      const { status, plan_name, plan_price, renewal_date, grace_period_days, subscription_status, features } = req.body;
+      const {
+        business_name, slug, email, phone, status, plan_name, plan_price,
+        renewal_date, grace_period_days, subscription_status, features, support_pin
+      } = req.body;
 
       const updates = [];
       const values = [];
 
+      if (business_name !== undefined) { updates.push('business_name = ?'); values.push(String(business_name).trim()); }
+      if (slug !== undefined) { updates.push('slug = ?'); values.push(String(slug).trim().toLowerCase()); }
+      if (email !== undefined) { updates.push('email = ?'); values.push(email || null); }
+      if (phone !== undefined) { updates.push('phone = ?'); values.push(phone || null); }
+      if (support_pin !== undefined) { updates.push('support_pin = ?'); values.push(support_pin || null); }
       if (status !== undefined) { updates.push('status = ?'); values.push(status); }
       if (plan_name !== undefined) { updates.push('plan_name = ?'); values.push(plan_name); }
       if (plan_price !== undefined) { updates.push('plan_price = ?'); values.push(plan_price); }

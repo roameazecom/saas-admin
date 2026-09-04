@@ -16,6 +16,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [outlets, setOutlets] = useState([]);
   const [selectedVendorStats, setSelectedVendorStats] = useState(null);
+  const [selectedRestaurantDetails, setSelectedRestaurantDetails] = useState(null);
   const [saasTeam, setSaasTeam] = useState([]);
 
   // Advanced Modules Data State
@@ -35,6 +36,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
   const [isAddTeamOpen, setIsAddTeamOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isRestaurantModalOpen, setIsRestaurantModalOpen] = useState(false);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -105,6 +107,15 @@ export default function SaaSAdminDashboard({ onLogout }) {
     } catch (err) {}
   };
 
+  const fetchRestaurantDetails = async (vendorId) => {
+    try {
+      const res = await axios.get(`${API}/api/vendors/${vendorId}/restaurant-details`);
+      if (res.data) setSelectedRestaurantDetails(res.data);
+    } catch (err) {
+      setSelectedRestaurantDetails(null);
+    }
+  };
+
   const fetchSaasTeam = async () => {
     try {
       const res = await axios.get(`${API}/api/team`);
@@ -158,6 +169,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
     if (selectedVendor?.id) {
       fetchOutlets(selectedVendor.id);
       fetchVendorStats(selectedVendor.id);
+      fetchRestaurantDetails(selectedVendor.id);
       setVendorFeatures(selectedVendor.features || {});
     }
   }, [selectedVendor]);
@@ -172,6 +184,16 @@ export default function SaaSAdminDashboard({ onLogout }) {
     const phone = formData.get('phone');
     const plan_name = formData.get('plan_name');
     const plan_price = formData.get('plan_price');
+    const brand_name = formData.get('brand_name') || business_name;
+    const address = formData.get('address');
+    const tax_enabled = formData.get('tax_enabled') === 'on';
+    const tax_percent = formData.get('tax_percent');
+    const tax_name = formData.get('tax_name') || 'GST';
+    const tax_mode = formData.get('tax_mode') || 'EXCLUSIVE';
+    const gst = formData.get('gst');
+    const fssai_number = formData.get('fssai_number');
+    const brand_logo_url = formData.get('brand_logo_url');
+    const default_outlet_name = formData.get('default_outlet_name') || 'Main Outlet';
 
     try {
       await axios.post(`${API}/api/vendors`, {
@@ -181,6 +203,17 @@ export default function SaaSAdminDashboard({ onLogout }) {
         phone,
         plan_name,
         plan_price: Number(plan_price || 2499),
+        brand_name,
+        address,
+        tax_enabled,
+        tax_percent: Number(tax_percent || 0),
+        tax_name,
+        tax_mode,
+        gst,
+        fssai_number,
+        brand_logo_url,
+        default_outlet_name,
+        outlet_address: address,
         features: vendorFeatures
       });
       toast.success(`Restaurant Brand "${business_name}" onboarded successfully!`);
@@ -224,6 +257,10 @@ export default function SaaSAdminDashboard({ onLogout }) {
     e.preventDefault();
     if (!selectedVendor) return;
     const formData = new FormData(e.target);
+    const business_name = formData.get('business_name');
+    const slug = formData.get('slug');
+    const email = formData.get('email');
+    const phone = formData.get('phone');
     const plan_name = formData.get('plan_name');
     const plan_price = formData.get('plan_price');
     const renewal_date = formData.get('renewal_date');
@@ -232,6 +269,10 @@ export default function SaaSAdminDashboard({ onLogout }) {
     try {
       await axios.post(`${API}/api/vendors/update`, {
         id: selectedVendor.id,
+        business_name,
+        slug,
+        email,
+        phone,
         plan_name,
         plan_price: Number(plan_price),
         renewal_date,
@@ -242,6 +283,38 @@ export default function SaaSAdminDashboard({ onLogout }) {
       refreshAllData();
     } catch (err) {
       toast.error('Failed to update subscription');
+    }
+  };
+
+  const handleUpdateRestaurantDetails = async (e) => {
+    e.preventDefault();
+    if (!selectedVendor) return;
+    const formData = new FormData(e.target);
+    const payload = {
+      name: formData.get('brand_name'),
+      brand_name: formData.get('brand_name'),
+      address: formData.get('address'),
+      phone: formData.get('phone'),
+      email: formData.get('email'),
+      tax_enabled: formData.get('tax_enabled') === 'on',
+      tax_percent: Number(formData.get('tax_percent') || 0),
+      tax_name: formData.get('tax_name') || 'GST',
+      tax_mode: formData.get('tax_mode') || 'EXCLUSIVE',
+      gst: formData.get('gst'),
+      gst_number: formData.get('gst'),
+      fssai_number: formData.get('fssai_number'),
+      brand_logo_url: formData.get('brand_logo_url'),
+      daily_pin: formData.get('daily_pin') || '1234'
+    };
+
+    try {
+      const res = await axios.put(`${API}/api/vendors/${selectedVendor.id}/restaurant-details`, payload);
+      setSelectedRestaurantDetails(res.data.restaurant_details || payload);
+      toast.success(`Restaurant details updated for ${selectedVendor.business_name}`);
+      setIsRestaurantModalOpen(false);
+      fetchRestaurantDetails(selectedVendor.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update restaurant details');
     }
   };
 
@@ -283,10 +356,10 @@ export default function SaaSAdminDashboard({ onLogout }) {
   };
 
   const handleCopyConfig = () => {
-    if (generatedConfig?.env_content) {
-      navigator.clipboard.writeText(generatedConfig.env_content);
+    if (generatedConfig?.activation_token) {
+      navigator.clipboard.writeText(generatedConfig.activation_token);
       setConfigCopied(true);
-      toast.success('.env content copied to clipboard!');
+      toast.success('Activation token copied to clipboard!');
       setTimeout(() => setConfigCopied(false), 3000);
     }
   };
@@ -304,6 +377,36 @@ export default function SaaSAdminDashboard({ onLogout }) {
       fetchOutlets(selectedVendor.id);
     } catch (err) {
       toast.error('Failed to add outlet');
+    }
+  };
+
+  const handleUpdateOutlet = async (outlet) => {
+    if (!selectedVendor) return;
+    const name = window.prompt('Update branch name:', outlet.name || '');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error('Branch name cannot be empty');
+      return;
+    }
+    try {
+      await axios.put(`${API}/api/vendors/${selectedVendor.id}/outlets/${outlet.id}`, { name: trimmed });
+      toast.success('Branch updated');
+      fetchOutlets(selectedVendor.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update branch');
+    }
+  };
+
+  const handleDeleteOutlet = async (outlet) => {
+    if (!selectedVendor) return;
+    if (!window.confirm(`Remove branch "${outlet.name}" from ${selectedVendor.business_name}?`)) return;
+    try {
+      await axios.delete(`${API}/api/vendors/${selectedVendor.id}/outlets/${outlet.id}`);
+      toast.success('Branch removed');
+      fetchOutlets(selectedVendor.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to remove branch');
     }
   };
 
@@ -891,6 +994,32 @@ export default function SaaSAdminDashboard({ onLogout }) {
                   </div>
 
                   <div className="p-6 space-y-6 overflow-y-auto max-h-[600px]">
+                    {/* Restaurant Master Details Card */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex justify-between items-start flex-wrap gap-4">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Restaurant Master Details</span>
+                        <div className="text-sm font-black text-white">
+                          {selectedRestaurantDetails?.brand_name || selectedRestaurantDetails?.name || selectedVendor.business_name}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {selectedRestaurantDetails?.address || 'Address not configured'}
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-400">
+                          <span>Phone: {selectedRestaurantDetails?.phone || selectedVendor.phone || 'N/A'}</span>
+                          <span>Email: {selectedRestaurantDetails?.email || selectedVendor.email || 'N/A'}</span>
+                          <span>GST: {selectedRestaurantDetails?.gst || selectedRestaurantDetails?.gst_number || 'N/A'}</span>
+                          <span>Tax: {selectedRestaurantDetails?.tax_enabled ? `${selectedRestaurantDetails?.tax_name || 'GST'} ${selectedRestaurantDetails?.tax_percent || 0}%` : 'Disabled'}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setIsRestaurantModalOpen(true)}
+                        className="px-3.5 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" /> Edit Restaurant Details
+                      </button>
+                    </div>
+
                     {/* Subscription & Billing Card */}
                     <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex justify-between items-center flex-wrap gap-4">
                       <div>
@@ -1028,7 +1157,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {outlets.map((o) => (
-                          <div key={o.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 shadow-inner flex items-center justify-between">
+                          <div key={o.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 shadow-inner flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black">
                                 <MapPin className="w-4 h-4" />
@@ -1038,9 +1167,22 @@ export default function SaaSAdminDashboard({ onLogout }) {
                                 <span className="text-[10px] text-slate-500 font-mono">Location ID #{o.id}</span>
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-black uppercase">
-                              Active
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleUpdateOutlet(o)}
+                                title="Edit branch"
+                                className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-indigo-600 transition"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteOutlet(o)}
+                                title="Remove branch"
+                                className="p-1.5 rounded-lg bg-slate-800 text-rose-400 hover:text-white hover:bg-rose-600 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1456,6 +1598,62 @@ export default function SaaSAdminDashboard({ onLogout }) {
                 </div>
               </div>
 
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Public Brand Name</label>
+                <input type="text" name="brand_name" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Name printed on bills and POS" />
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Restaurant Address</label>
+                <textarea name="address" rows="2" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Full billing address"></textarea>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">GST Number</label>
+                  <input type="text" name="gst" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="22AAAAA0000A1Z5" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">FSSAI Number</label>
+                  <input type="text" name="fssai_number" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="10000000000000" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2.5 text-slate-300 font-bold">
+                  <input type="checkbox" name="tax_enabled" className="w-4 h-4" />
+                  Apply Tax
+                </label>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax %</label>
+                  <input type="number" step="0.01" min="0" max="100" name="tax_percent" defaultValue="0" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax Name</label>
+                  <input type="text" name="tax_name" defaultValue="GST" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax Mode</label>
+                  <select name="tax_mode" defaultValue="EXCLUSIVE" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none">
+                    <option value="EXCLUSIVE">Exclusive</option>
+                    <option value="INCLUSIVE">Inclusive</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Logo URL</label>
+                <input type="url" name="brand_logo_url" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="https://..." />
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Default Outlet Name</label>
+                <input type="text" name="default_outlet_name" defaultValue="Main Outlet" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold uppercase text-slate-400 mb-1">Select Subscription Plan</label>
@@ -1480,6 +1678,90 @@ export default function SaaSAdminDashboard({ onLogout }) {
         </div>
       )}
 
+      {/* MODAL: EDIT RESTAURANT MASTER DETAILS */}
+      {isRestaurantModalOpen && selectedVendor && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 px-4 py-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+              <h3 className="font-black text-lg text-amber-400">Restaurant Details: {selectedVendor.business_name}</h3>
+              <button onClick={() => setIsRestaurantModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
+            </div>
+            <form onSubmit={handleUpdateRestaurantDetails} className="p-6 space-y-4 text-xs overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Brand Name</label>
+                  <input name="brand_name" defaultValue={selectedRestaurantDetails?.brand_name || selectedRestaurantDetails?.name || selectedVendor.business_name} required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Phone</label>
+                  <input name="phone" defaultValue={selectedRestaurantDetails?.phone || selectedVendor.phone || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Email</label>
+                <input type="email" name="email" defaultValue={selectedRestaurantDetails?.email || selectedVendor.email || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Address</label>
+                <textarea name="address" rows="3" defaultValue={selectedRestaurantDetails?.address || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">GST Number</label>
+                  <input name="gst" defaultValue={selectedRestaurantDetails?.gst || selectedRestaurantDetails?.gst_number || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">FSSAI Number</label>
+                  <input name="fssai_number" defaultValue={selectedRestaurantDetails?.fssai_number || selectedRestaurantDetails?.fssai || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 p-2.5 text-slate-300 font-bold">
+                  <input type="checkbox" name="tax_enabled" defaultChecked={!!selectedRestaurantDetails?.tax_enabled} className="w-4 h-4" />
+                  Apply Tax
+                </label>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax %</label>
+                  <input type="number" step="0.01" min="0" max="100" name="tax_percent" defaultValue={selectedRestaurantDetails?.tax_percent || 0} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax Name</label>
+                  <input name="tax_name" defaultValue={selectedRestaurantDetails?.tax_name || 'GST'} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Tax Mode</label>
+                  <select name="tax_mode" defaultValue={selectedRestaurantDetails?.tax_mode || 'EXCLUSIVE'} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none">
+                    <option value="EXCLUSIVE">Exclusive</option>
+                    <option value="INCLUSIVE">Inclusive</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Daily PIN</label>
+                  <input name="daily_pin" maxLength="6" defaultValue={selectedRestaurantDetails?.daily_pin || '1234'} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-mono bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Logo URL</label>
+                <input type="url" name="brand_logo_url" defaultValue={selectedRestaurantDetails?.brand_logo_url || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setIsRestaurantModalOpen(false)} className="px-4 py-2 rounded-xl font-bold text-slate-400 hover:bg-slate-800 transition">Cancel</button>
+                <button type="submit" className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-lg transition">Save Restaurant Details</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: UPDATE SUBSCRIPTION */}
       {isSubscriptionModalOpen && selectedVendor && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
@@ -1489,6 +1771,24 @@ export default function SaaSAdminDashboard({ onLogout }) {
               <button onClick={() => setIsSubscriptionModalOpen(false)} className="text-slate-500 hover:text-white font-bold">✕</button>
             </div>
             <form onSubmit={handleUpdateSubscription} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Restaurant / Business Name</label>
+                <input type="text" name="business_name" defaultValue={selectedVendor.business_name || ''} required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase text-slate-400 mb-1">Slug</label>
+                <input type="text" name="slug" defaultValue={selectedVendor.slug || ''} required className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-mono bg-slate-950 text-white focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Owner Email</label>
+                  <input type="email" name="email" defaultValue={selectedVendor.email || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase text-slate-400 mb-1">Owner Phone</label>
+                  <input type="text" name="phone" defaultValue={selectedVendor.phone || ''} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm bg-slate-950 text-white focus:outline-none" />
+                </div>
+              </div>
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Subscription Plan Name</label>
                 <select name="plan_name" defaultValue={selectedVendor.plan_name || 'Professional POS'} className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none">
@@ -1692,7 +1992,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
 
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">.env File Content (Copy this):</h4>
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">Activation Token (Copy this):</h4>
                   <button
                     onClick={handleCopyConfig}
                     className={`px-3 py-1.5 text-xs font-black rounded-lg flex items-center gap-1.5 transition cursor-pointer ${
@@ -1702,18 +2002,18 @@ export default function SaaSAdminDashboard({ onLogout }) {
                     }`}
                   >
                     {configCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    {configCopied ? 'Copied!' : 'Copy .env'}
+                    {configCopied ? 'Copied!' : 'Copy Token'}
                   </button>
                 </div>
                 <pre className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-emerald-300 font-mono whitespace-pre-wrap overflow-x-auto leading-relaxed">
-                  {generatedConfig.env_content}
+                  {generatedConfig.activation_token}
                 </pre>
               </div>
 
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
                 <p className="text-xs text-emerald-300 font-bold flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual MySQL installation or database creation is needed. Simply set VENDOR_ID={generatedConfig.vendor_id}.</span>
+                  <span>Zero-Config Note: This restaurant uses Embedded SQLite DB. No manual .env file, MySQL installation, or cloud credential copy is needed.</span>
                 </p>
               </div>
             </div>

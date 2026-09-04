@@ -45,6 +45,82 @@ function generateSyncToken(vendorId, vendorCode) {
   return `saas.sync.${payload}.${sig}`;
 }
 
+async function getTableColumns(db, tableName) {
+  const [rows] = await db.query(`SHOW COLUMNS FROM ${tableName}`);
+  return new Set(rows.map(row => row.Field));
+}
+
+function cleanRestaurantDetails(input = {}, fallback = {}) {
+  const name = String(input.brand_name || input.name || fallback.business_name || '').trim();
+  const gst = String(input.gst || input.gst_number || '').trim();
+  const fssai = String(input.fssai || input.fssai_number || '').trim();
+  const logo = String(input.brand_logo_url || input.logo_url || '').trim();
+  const taxEnabled = input.tax_enabled === true || input.tax_enabled === 1 || input.tax_enabled === '1' || input.tax_enabled === 'true';
+  const taxPercent = input.tax_percent !== undefined && input.tax_percent !== null && input.tax_percent !== ''
+    ? Number(input.tax_percent)
+    : Number(fallback.tax_percent || 0);
+
+  return {
+    name,
+    brand_name: name,
+    address: input.address || null,
+    phone: input.phone || fallback.phone || null,
+    email: input.email || fallback.email || null,
+    tax_enabled: taxEnabled ? 1 : 0,
+    tax_percent: Number.isFinite(taxPercent) ? taxPercent : 0,
+    tax_name: input.tax_name || 'GST',
+    tax_mode: String(input.tax_mode || 'EXCLUSIVE').toUpperCase(),
+    gst: gst || null,
+    gst_number: gst || null,
+    fssai_number: fssai || null,
+    brand_logo_url: logo || null,
+    daily_pin: input.daily_pin || '1234'
+  };
+}
+
+function sanitizeRestaurantDetails(row = {}, fallback = {}) {
+  return {
+    id: row.id || null,
+    vendor_id: row.vendor_id || fallback.vendor_id || null,
+    restaurant_id: row.restaurant_id || fallback.restaurant_id || 1,
+    location_id: row.location_id || fallback.location_id || 1,
+    ...cleanRestaurantDetails(row, fallback)
+  };
+}
+
+async function fetchRestaurantDetails(db, vendorId, fallback = {}) {
+  const [rows] = await db.query('SELECT * FROM restaurant_details WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
+  if (rows.length) return sanitizeRestaurantDetails(rows[0], { ...fallback, vendor_id: vendorId });
+  return sanitizeRestaurantDetails({}, { ...fallback, vendor_id: vendorId });
+}
+
+async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) {
+  const columns = await getTableColumns(db, 'restaurant_details');
+  const fieldValues = {
+    vendor_id: vendorId,
+    restaurant_id: input.restaurant_id || fallback.restaurant_id || 1,
+    location_id: input.location_id || fallback.location_id || 1,
+    ...cleanRestaurantDetails(input, fallback)
+  };
+  const [existing] = await db.query('SELECT id FROM restaurant_details WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
+  if (existing.length) {
+    const updateFields = Object.keys(fieldValues).filter(field => field !== 'vendor_id' && columns.has(field));
+    if (updateFields.length) {
+      await db.query(
+        `UPDATE restaurant_details SET ${updateFields.map(field => `${field} = ?`).join(', ')} WHERE vendor_id = ?`,
+        [...updateFields.map(field => fieldValues[field]), vendorId]
+      );
+    }
+  } else {
+    const insertFields = Object.keys(fieldValues).filter(field => columns.has(field));
+    await db.query(
+      `INSERT INTO restaurant_details (${insertFields.join(', ')}) VALUES (${insertFields.map(() => '?').join(', ')})`,
+      insertFields.map(field => fieldValues[field])
+    );
+  }
+  return fetchRestaurantDetails(db, vendorId, fallback);
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -95,23 +171,46 @@ export default async function handler(req, res) {
 
       let adminPin = '1234';
       let adminEmail = vendor.email || `admin.${String(vendorCode).toLowerCase().replace(/[^a-z0-9]/g, '')}@restaurant.local`;
-
-      try {
-        const [users] = await db.query(
-          "SELECT email, pin FROM users WHERE vendor_id = ? AND (role = 'admin' OR role = 'super_admin' OR role = 'owner') ORDER BY id ASC LIMIT 1",
-          [vendorId]
-        );
-        if (users.length && users[0].pin) {
-          adminPin = String(users[0].pin).trim();
-          if (users[0].email) adminEmail = users[0].email;
-        }
-      } catch (uErr) {}
-
       let locationId = 1;
       try {
         const [locs] = await db.query('SELECT id FROM locations WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
         if (locs.length) locationId = locs[0].id;
       } catch (lErr) {}
+
+      const restaurantDetails = await fetchRestaurantDetails(db, vendorId, {
+        business_name: vendor.business_name,
+        email: vendor.email,
+        phone: vendor.phone,
+        location_id: locationId
+      });
+
+      try {
+        const [users] = await db.query(
+          "SELECT id, email, pin FROM users WHERE vendor_id = ? AND (role = 'admin' OR role = 'super_admin' OR role = 'owner') ORDER BY id ASC LIMIT 1",
+          [vendorId]
+        );
+        if (users.length) {
+          if (users[0].pin && String(users[0].pin).trim()) {
+            adminPin = String(users[0].pin).trim();
+          } else {
+            adminPin = '1234';
+            try {
+              await db.query("UPDATE users SET pin = '1234' WHERE id = ?", [users[0].id]);
+            } catch (e) {}
+          }
+          if (users[0].email) adminEmail = users[0].email;
+        } else {
+          adminPin = '1234';
+          try {
+            const tempAdminPassword = crypto.randomBytes(16).toString('hex');
+            const securePasswordHash = hashPassword(tempAdminPassword);
+            await db.query(
+              "INSERT INTO users (vendor_id, name, email, password_hash, role, pin, location_id) VALUES (?, ?, ?, ?, 'admin', '1234', ?)",
+              [vendorId, vendor.business_name, adminEmail, securePasswordHash, locationId]
+            );
+          } catch (e) {}
+        }
+      } catch (uErr) {}
 
       const syncToken = generateSyncToken(vendor.id, vendorCode);
 
@@ -131,6 +230,7 @@ export default async function handler(req, res) {
         admin_pin: adminPin,
         restaurant_id: 1,
         location_id: locationId,
+        restaurant_details: { ...restaurantDetails, location_id: locationId },
         features,
         sync_token: syncToken
       });
@@ -190,9 +290,11 @@ export default async function handler(req, res) {
 
   // ── GET /api/vendors ────────────────────────────────────────────────────────
   if (req.method === 'GET') {
+    const admin = requireSaasAdminAuth(req, res);
+    if (!admin) return;
     try {
       const [rows] = await db.query(`
-        SELECT id, business_name, vendor_code, tenant_id, slug, email, phone, status, features,
+        SELECT id, business_name, vendor_code, tenant_id, slug, email, phone, status, features, support_pin,
           COALESCE(plan_name, 'Professional POS') as plan_name,
           COALESCE(plan_price, 2499.00) as plan_price,
           renewal_date,
@@ -221,7 +323,9 @@ export default async function handler(req, res) {
       const {
         business_name, slug, email, phone, plan_name, plan_price,
         renewal_date, grace_period_days, features,
-        owner_name, owner_password, tax_percent
+        owner_name, owner_password, tax_percent,
+        brand_name, address, tax_enabled, tax_name, tax_mode, gst, gst_number,
+        fssai, fssai_number, brand_logo_url, default_outlet_name, outlet_address
       } = req.body;
 
       if (!business_name || !slug) {
@@ -246,30 +350,63 @@ export default async function handler(req, res) {
 
       const vendorId = result.insertId;
 
-      // 1. Create Restaurant Details in Cloud
+      let locationId = 1;
       try {
-        await db.query(
-          `INSERT INTO restaurant_details (vendor_id, name, phone, email, tax_percent, daily_pin) VALUES (?, ?, ?, ?, ?, ?)`,
-          [vendorId, business_name.trim(), phone || '', email || '', tax_percent !== undefined ? tax_percent : 0.00, '1234']
+        const locationColumns = await getTableColumns(db, 'locations');
+        const locationValues = {
+          vendor_id: vendorId,
+          restaurant_id: 1,
+          name: default_outlet_name || 'Main Outlet',
+          address: outlet_address || address || null,
+          is_active: 1
+        };
+        const fields = Object.keys(locationValues).filter(field => locationColumns.has(field));
+        const [locResult] = await db.query(
+          `INSERT INTO locations (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+          fields.map(field => locationValues[field])
         );
+        locationId = locResult.insertId || 1;
+      } catch (e) {}
+
+      try {
+        await upsertRestaurantDetails(db, vendorId, {
+          name: brand_name || business_name,
+          brand_name: brand_name || business_name,
+          address,
+          phone,
+          email,
+          tax_enabled,
+          tax_percent,
+          tax_name,
+          tax_mode,
+          gst: gst || gst_number,
+          gst_number: gst_number || gst,
+          fssai_number: fssai_number || fssai,
+          brand_logo_url,
+          restaurant_id: 1,
+          location_id: locationId
+        }, { business_name, email, phone, location_id: locationId });
       } catch (e) {
         console.error('Failed to create restaurant_details:', e.message);
       }
 
-      // 2. Create Default Branch Location in Cloud
-      try {
-        await db.query(
-          `INSERT INTO locations (vendor_id, name) VALUES (?, ?)`,
-          [vendorId, 'Main Outlet']
-        );
-      } catch (e) {}
-
-      // 3. Create Admin User in Cloud
       try {
         const initialPassword = owner_password || crypto.randomBytes(12).toString('base64url');
+        const userColumns = await getTableColumns(db, 'users');
+        const userValues = {
+          vendor_id: vendorId,
+          name: owner_name || business_name.trim(),
+          email: email || `admin@${slug}.in`,
+          password_hash: hashPassword(initialPassword),
+          role: 'admin',
+          pin: '1234',
+          is_active: 1,
+          location_id: locationId
+        };
+        const fields = Object.keys(userValues).filter(field => userColumns.has(field));
         await db.query(
-          `INSERT INTO users (vendor_id, name, email, password_hash, role, pin, is_active) VALUES (?, ?, ?, ?, 'admin', '1234', 1)`,
-          [vendorId, owner_name || business_name.trim(), email || `admin@${slug}.in`, hashPassword(initialPassword)]
+          `INSERT INTO users (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+          fields.map(field => userValues[field])
         );
       } catch (e) {
         console.error('Failed to create initial admin user:', e.message);
