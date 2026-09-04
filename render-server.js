@@ -137,6 +137,11 @@ async function getTableColumns(db, tableName) {
   return new Set(rows.map(row => row.Field));
 }
 
+async function getTableColumnInfo(db, tableName) {
+  const [rows] = await db.query(`SHOW COLUMNS FROM ${tableName}`);
+  return new Map(rows.map(row => [row.Field, row]));
+}
+
 function cleanRestaurantDetails(input = {}, fallback = {}) {
   const name = String(input.brand_name || input.name || fallback.business_name || '').trim();
   const gst = String(input.gst || input.gst_number || '').trim();
@@ -168,7 +173,7 @@ function cleanRestaurantDetails(input = {}, fallback = {}) {
 function sanitizeRestaurantDetails(row = {}, fallback = {}) {
   const details = cleanRestaurantDetails(row, fallback);
   return {
-    id: row.id || null,
+    cloud_restaurant_details_id: row.id || null,
     vendor_id: row.vendor_id || fallback.vendor_id || null,
     restaurant_id: row.restaurant_id || fallback.restaurant_id || 1,
     location_id: row.location_id || fallback.location_id || 1,
@@ -183,29 +188,40 @@ async function fetchRestaurantDetails(db, vendorId, fallback = {}) {
 }
 
 async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) {
-  const columns = await getTableColumns(db, 'restaurant_details');
+  const columnInfo = await getTableColumnInfo(db, 'restaurant_details');
+  const columns = new Set(columnInfo.keys());
   const details = cleanRestaurantDetails(input, fallback);
+  const locationId = input.location_id || fallback.location_id || 1;
   const fieldValues = {
     vendor_id: vendorId,
     restaurant_id: input.restaurant_id || fallback.restaurant_id || 1,
-    location_id: input.location_id || fallback.location_id || 1,
+    location_id: locationId,
     ...details
   };
 
-  const [existing] = await db.query('SELECT id FROM restaurant_details WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
+  const [existing] = columns.has('location_id')
+    ? await db.query('SELECT id FROM restaurant_details WHERE vendor_id = ? AND location_id = ? ORDER BY id ASC LIMIT 1', [vendorId, locationId])
+    : await db.query('SELECT id FROM restaurant_details WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
   if (existing.length) {
-    const updateFields = Object.keys(fieldValues).filter(field => field !== 'vendor_id' && columns.has(field));
+    const updateFields = Object.keys(fieldValues).filter(field => field !== 'id' && field !== 'vendor_id' && columns.has(field));
     if (updateFields.length) {
       await db.query(
-        `UPDATE restaurant_details SET ${updateFields.map(field => `${field} = ?`).join(', ')} WHERE vendor_id = ?`,
-        [...updateFields.map(field => fieldValues[field]), vendorId]
+        `UPDATE restaurant_details SET ${updateFields.map(field => `${field} = ?`).join(', ')} WHERE id = ?`,
+        [...updateFields.map(field => fieldValues[field]), existing[0].id]
       );
     }
   } else {
-    const insertFields = Object.keys(fieldValues).filter(field => columns.has(field));
+    const insertValues = { ...fieldValues };
+    const idInfo = columnInfo.get('id');
+    const idIsAutoIncrement = String(idInfo?.Extra || '').toLowerCase().includes('auto_increment');
+    if (idInfo && !idIsAutoIncrement) {
+      const [[nextRow]] = await db.query('SELECT COALESCE(MAX(CAST(id AS UNSIGNED)), 0) + 1 AS next_id FROM restaurant_details');
+      insertValues.id = nextRow?.next_id || Date.now();
+    }
+    const insertFields = Object.keys(insertValues).filter(field => field !== 'id' ? columns.has(field) : columns.has('id'));
     await db.query(
       `INSERT INTO restaurant_details (${insertFields.join(', ')}) VALUES (${insertFields.map(() => '?').join(', ')})`,
-      insertFields.map(field => fieldValues[field])
+      insertFields.map(field => insertValues[field])
     );
   }
 
@@ -374,46 +390,141 @@ app.post('/api/vendors/activate', async (req, res) => {
 
     let adminPin = '1234';
     let adminEmail = vendor.email || `admin.${String(vendorCode).toLowerCase().replace(/[^a-z0-9]/g, '')}@restaurant.local`;
-    let locationId = 1;
+    let locations = [];
     try {
-      const [locs] = await db.query('SELECT id FROM locations WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
-      if (locs.length) locationId = locs[0].id;
+      const [locs] = await db.query(
+        'SELECT id, id AS location_id, vendor_id, restaurant_id, name, address, phone, city, state, pincode, is_active FROM locations WHERE vendor_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(locs) && locs.length > 0) {
+        locations = locs.map(l => ({
+          id: Number(l.id),
+          location_id: Number(l.id),
+          vendor_id: Number(vendorId),
+          restaurant_id: Number(l.restaurant_id || 1),
+          name: l.name || 'Main Outlet',
+          address: l.address || '',
+          phone: l.phone || null,
+          city: l.city || null,
+          state: l.state || null,
+          pincode: l.pincode || null,
+          is_active: l.is_active !== 0
+        }));
+      }
     } catch (lErr) { /* non-fatal */ }
+
+    if (locations.length === 0) {
+      locations = [{
+        id: 1,
+        location_id: 1,
+        vendor_id: Number(vendorId),
+        restaurant_id: 1,
+        name: 'Main Outlet',
+        address: vendor.business_name || '',
+        phone: vendor.phone || null,
+        is_active: true
+      }];
+    }
+
+    const defaultLocationId = locations[0].id;
 
     const restaurantDetails = await fetchRestaurantDetails(db, vendorId, {
       business_name: vendor.business_name,
       email: vendor.email,
       phone: vendor.phone,
-      location_id: locationId
+      location_id: defaultLocationId
     });
+
+    let adminUser = {
+      id: null,
+      name: vendor.business_name || 'Admin',
+      email: adminEmail,
+      role: 'admin',
+      vendor_id: Number(vendorId),
+      location_id: defaultLocationId,
+      avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(vendor.business_name || 'Admin')}`,
+      pin_configured: true
+    };
 
     try {
       const [users] = await db.query(
-        "SELECT id, email, pin FROM users WHERE vendor_id = ? AND (role = 'admin' OR role = 'super_admin' OR role = 'owner') ORDER BY id ASC LIMIT 1",
+        "SELECT id, name, email, role, pin, location_id, avatar_url FROM users WHERE vendor_id = ? AND (role = 'admin' OR role = 'super_admin' OR role = 'owner') ORDER BY id ASC LIMIT 1",
         [vendorId]
       );
       if (users.length) {
-        if (users[0].pin && String(users[0].pin).trim()) {
-          adminPin = String(users[0].pin).trim();
+        const u = users[0];
+        if (u.pin && String(u.pin).trim()) {
+          adminPin = String(u.pin).trim();
         } else {
           adminPin = '1234';
           try {
-            await db.query("UPDATE users SET pin = '1234' WHERE id = ?", [users[0].id]);
+            await db.query("UPDATE users SET pin = '1234' WHERE id = ?", [u.id]);
           } catch (e) {}
         }
-        if (users[0].email) adminEmail = users[0].email;
+        if (u.email) adminEmail = u.email;
+        adminUser = {
+          id: u.id,
+          name: u.name || vendor.business_name,
+          email: u.email || adminEmail,
+          role: u.role || 'admin',
+          vendor_id: Number(vendorId),
+          location_id: Number(u.location_id || defaultLocationId),
+          avatar_url: u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || 'Admin')}`,
+          pin_configured: Boolean(adminPin)
+        };
       } else {
         adminPin = '1234';
         try {
           const tempAdminPassword = crypto.randomBytes(16).toString('hex');
           const securePasswordHash = hashPassword(tempAdminPassword);
-          await db.query(
+          const [ins] = await db.query(
             "INSERT INTO users (vendor_id, name, email, password_hash, role, pin, location_id) VALUES (?, ?, ?, ?, 'admin', '1234', ?)",
-            [vendorId, vendor.business_name, adminEmail, securePasswordHash, locationId]
+            [vendorId, vendor.business_name, adminEmail, securePasswordHash, defaultLocationId]
           );
+          adminUser.id = ins.insertId;
         } catch (e) {}
       }
     } catch (uErr) { /* non-fatal fallback */ }
+
+    // Fetch master categories from SaaS Cloud TiDB
+    let categories = [];
+    try {
+      const [catRows] = await db.query(
+        'SELECT id, vendor_id, location_id, name, type, is_active, sort_order FROM categories WHERE vendor_id = ? ORDER BY sort_order ASC, id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(catRows)) categories = catRows;
+    } catch (cErr) {}
+
+    // Fetch master menu items from SaaS Cloud TiDB
+    let menuItems = [];
+    try {
+      const [itemRows] = await db.query(
+        'SELECT id, vendor_id, location_id, category_id, name, price, type, is_available, inventory_item_id, inventory_qty_per_unit, image_base64, image_url FROM menu_items WHERE vendor_id = ? ORDER BY id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(itemRows)) menuItems = itemRows;
+    } catch (mErr) {}
+
+    // Fetch restaurant areas from SaaS Cloud TiDB
+    let restaurantAreas = [];
+    try {
+      const [areaRows] = await db.query(
+        'SELECT id, vendor_id, restaurant_id, location_id, name, is_active FROM restaurant_areas WHERE vendor_id = ? ORDER BY id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(areaRows)) restaurantAreas = areaRows;
+    } catch (aErr) {}
+
+    // Fetch restaurant tables from SaaS Cloud TiDB
+    let restaurantTables = [];
+    try {
+      const [tblRows] = await db.query(
+        'SELECT id, vendor_id, restaurant_id, location_id, area_id, table_number, capacity, status, is_active FROM restaurant_tables WHERE vendor_id = ? ORDER BY id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(tblRows)) restaurantTables = tblRows;
+    } catch (tErr) {}
 
     const syncToken = generateSyncToken(vendor.id, vendorCode);
 
@@ -426,9 +537,16 @@ app.post('/api/vendors/activate', async (req, res) => {
       vendor_name: vendor.business_name,
       admin_email: adminEmail,
       admin_pin: adminPin,
+      admin_user: adminUser,
       restaurant_id: 1,
-      location_id: locationId,
-      restaurant_details: { ...restaurantDetails, location_id: locationId },
+      selected_location_id: null,
+      location_id: defaultLocationId,
+      locations,
+      restaurant_details: { ...restaurantDetails, location_id: defaultLocationId },
+      categories,
+      menu_items: menuItems,
+      restaurant_areas: restaurantAreas,
+      restaurant_tables: restaurantTables,
       features,
       sync_token: syncToken
     });
