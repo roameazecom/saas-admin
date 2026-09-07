@@ -142,6 +142,107 @@ async function getTableColumnInfo(db, tableName) {
   return new Map(rows.map(row => [row.Field, row]));
 }
 
+const SYNC_GATEWAY_TABLES = {
+  orders: {
+    columns: ['id', 'sync_uuid', 'table_id', 'status', 'subtotal', 'tax_amount', 'total_amount', 'created_at', 'payment_type', 'customer_name', 'customer_phone', 'user_id', 'order_type', 'discount_amount', 'vendor_id', 'restaurant_id', 'location_id', 'notes'],
+    updateColumns: ['sync_uuid', 'status', 'subtotal', 'tax_amount', 'total_amount', 'payment_type', 'customer_name', 'customer_phone', 'user_id', 'order_type', 'discount_amount', 'restaurant_id', 'location_id', 'notes']
+  },
+  order_items: {
+    columns: ['id', 'sync_uuid', 'order_id', 'order_sync_uuid', 'menu_item_id', 'kot_id', 'quantity', 'price', 'status', 'discount_amount', 'notes'],
+    updateColumns: ['sync_uuid', 'order_sync_uuid', 'menu_item_id', 'kot_id', 'quantity', 'price', 'status', 'discount_amount', 'notes']
+  },
+  checkout_settlements: {
+    columns: ['id', 'sync_uuid', 'vendor_id', 'location_id', 'order_id', 'checkout_id', 'payment_type', 'currency', 'line_gross_minor', 'line_discount_minor', 'subtotal_after_line_discount_minor', 'order_discount_minor', 'net_subtotal_minor', 'tax_minor', 'total_payable_minor', 'tendered_minor', 'change_due_minor', 'tax_snapshot_version', 'tax_enabled_snapshot', 'tax_percent_snapshot', 'tax_name_snapshot', 'tax_mode_snapshot', 'pos_session_id', 'status', 'created_by_user_id', 'created_at'],
+    updateColumns: ['payment_type', 'currency', 'status']
+  },
+  inventory_logs: {
+    columns: ['id', 'vendor_id', 'item_id', 'type', 'quantity', 'logged_by', 'notes', 'created_at'],
+    updateColumns: ['item_id', 'type', 'quantity', 'logged_by', 'notes']
+  },
+  cancellations_log: {
+    columns: ['id', 'order_id', 'order_item_id', 'item_name', 'quantity', 'price', 'cancelled_by', 'cancelled_by_name', 'reason', 'created_at', 'vendor_id', 'restaurant_id', 'location_id'],
+    updateColumns: ['order_item_id', 'item_name', 'quantity', 'price', 'cancelled_by', 'cancelled_by_name', 'reason', 'restaurant_id', 'location_id']
+  },
+  pos_sessions: {
+    columns: ['id', 'vendor_id', 'user_id', 'opened_at', 'closed_at', 'opening_cash', 'expected_cash', 'closing_cash', 'total_upi_sales', 'total_card_sales', 'total_expenses', 'status', 'notes', 'settled_by_name', 'synced'],
+    updateColumns: ['closed_at', 'expected_cash', 'closing_cash', 'total_upi_sales', 'total_card_sales', 'total_expenses', 'status', 'notes', 'settled_by_name', 'synced']
+  },
+  attendance: {
+    columns: ['id', 'user_id', 'punch_in', 'punch_out', 'vendor_id'],
+    updateColumns: ['user_id', 'punch_in', 'punch_out']
+  },
+  expenses: {
+    columns: ['id', 'title', 'category', 'vendor_name', 'amount', 'payment_mode', 'paid_by', 'date', 'comment', 'created_at', 'vendor_id'],
+    updateColumns: ['title', 'category', 'vendor_name', 'amount', 'payment_mode', 'paid_by', 'date', 'comment']
+  },
+  daily_activity_logs: {
+    columns: ['id', 'vendor_id', 'log_date', 'activities', 'updated_at'],
+    updateColumns: ['log_date', 'activities', 'updated_at']
+  },
+  vendor_payments: {
+    columns: ['id', 'vendor_id', 'supplier_name', 'bill_number', 'bill_amount', 'paid_amount', 'payment_mode', 'notes', 'date', 'created_at'],
+    updateColumns: ['supplier_name', 'bill_number', 'bill_amount', 'paid_amount', 'payment_mode', 'notes', 'date']
+  },
+  staff_advances: {
+    columns: ['id', 'vendor_id', 'staff_name', 'total_advance_given', 'amount_recovered', 'created_at'],
+    updateColumns: ['staff_name', 'total_advance_given', 'amount_recovered']
+  }
+};
+
+function cleanPositiveInt(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function gatewayValueFor(field, row, claims, scope) {
+  if (field === 'vendor_id') return Number(claims.vendorId);
+  if (field === 'restaurant_id') return cleanPositiveInt(row.restaurant_id) || cleanPositiveInt(scope.restaurant_id) || null;
+  if (field === 'location_id') return cleanPositiveInt(row.location_id) || cleanPositiveInt(scope.location_id) || null;
+  if (field === 'synced') return 1;
+  return row[field] !== undefined ? row[field] : null;
+}
+
+async function upsertGatewayRows(db, tableName, rows, claims, scope, context = {}) {
+  const spec = SYNC_GATEWAY_TABLES[tableName];
+  if (!spec || !Array.isArray(rows) || rows.length === 0) {
+    return { count: 0, ids: [] };
+  }
+
+  const columnInfo = await getTableColumnInfo(db, tableName).catch(() => null);
+  if (!columnInfo) {
+    return { count: 0, ids: [], warning: `${tableName.toUpperCase()}_TABLE_MISSING` };
+  }
+
+  const available = new Set(columnInfo.keys());
+  const insertColumns = spec.columns.filter((field) => available.has(field));
+  const updateColumns = spec.updateColumns.filter((field) => available.has(field) && field !== 'id');
+  if (!insertColumns.includes('id')) return { count: 0, ids: [], warning: `${tableName.toUpperCase()}_ID_COLUMN_MISSING` };
+
+  let count = 0;
+  const ids = [];
+
+  for (const row of rows) {
+    const rowId = cleanPositiveInt(row && row.id);
+    if (!rowId) continue;
+    if (row.vendor_id !== undefined && row.vendor_id !== null && Number(row.vendor_id) !== Number(claims.vendorId)) continue;
+    if ((tableName === 'order_items' || tableName === 'checkout_settlements') && context.orderIds && !context.orderIds.has(cleanPositiveInt(row.order_id))) continue;
+
+    const values = insertColumns.map((field) => gatewayValueFor(field, row, claims, scope));
+    const updateSql = updateColumns.length
+      ? ` ON DUPLICATE KEY UPDATE ${updateColumns.map((field) => `${field}=VALUES(${field})`).join(', ')}`
+      : '';
+
+    await db.query(
+      `INSERT INTO ${tableName} (${insertColumns.join(', ')}) VALUES (${insertColumns.map(() => '?').join(', ')})${updateSql}`,
+      values
+    );
+    count++;
+    ids.push(rowId);
+  }
+
+  return { count, ids };
+}
+
 function cleanRestaurantDetails(input = {}, fallback = {}) {
   const name = String(input.brand_name || input.name || fallback.business_name || '').trim();
   const gst = String(input.gst || input.gst_number || '').trim();
@@ -228,6 +329,41 @@ async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) 
   return fetchRestaurantDetails(db, vendorId, fallback);
 }
 
+// ── GET /api/sync/gateway/restore (scoped historical restore for POS) ─────────
+app.get('/api/sync/gateway/restore', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : null;
+  const claims = verifySyncToken(token);
+  if (!claims || !claims.vendorId) {
+    return res.status(401).json({ success: false, code: 'INVALID_SYNC_TOKEN', error: 'Invalid or expired sync token' });
+  }
+
+  try {
+    const cloudDb = getDb();
+    const [orders] = await cloudDb.query(
+      'SELECT * FROM orders WHERE vendor_id = ? ORDER BY id ASC LIMIT 10000',
+      [claims.vendorId]
+    );
+    const orderIds = (orders || []).map((order) => cleanPositiveInt(order.id)).filter(Boolean);
+    let orderItems = [];
+    if (orderIds.length > 0) {
+      const [items] = await cloudDb.query('SELECT * FROM order_items WHERE order_id IN (?) ORDER BY id ASC', [orderIds]);
+      orderItems = items || [];
+    }
+    return res.json({
+      success: true,
+      vendorId: claims.vendorId,
+      tables: { orders: orders || [], order_items: orderItems },
+      restored: { orders: (orders || []).length, order_items: orderItems.length },
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, code: 'SYNC_GATEWAY_RESTORE_FAILED', error: err.message });
+  }
+});
+
 // ── POST /api/sync/gateway (HTTPS Sync Gateway for packaged POS clients) ──────
 app.post('/api/sync/gateway', async (req, res) => {
   const authHeader = req.headers['authorization'];
@@ -240,31 +376,51 @@ app.post('/api/sync/gateway', async (req, res) => {
     return res.status(401).json({ success: false, code: 'INVALID_SYNC_TOKEN', error: 'Invalid or expired sync token' });
   }
 
-  const { orders } = req.body || {};
+  const { orders, tables = {}, scope = {} } = req.body || {};
   const db = getDb();
-  let uploadedOrders = 0;
+  const incomingTables = {
+    ...tables,
+    orders: Array.isArray(tables.orders) ? tables.orders : orders
+  };
+  const uploaded = {};
+  const accepted = {};
+  const warnings = {};
+  let totalAccepted = 0;
 
   try {
-    if (Array.isArray(orders) && orders.length > 0) {
-      for (const ord of orders) {
-        if (Number(ord.vendor_id) === Number(claims.vendorId)) {
-          await db.query(`
-            INSERT INTO orders (id, sync_uuid, table_id, status, subtotal, tax_amount, total_amount, created_at, payment_type, customer_name, customer_phone, user_id, order_type, discount_amount, vendor_id, restaurant_id, location_id, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE sync_uuid=VALUES(sync_uuid), status=VALUES(status), total_amount=VALUES(total_amount), payment_type=VALUES(payment_type)
-          `, [
-            ord.id, ord.sync_uuid || null, ord.table_id || null, ord.status || 'completed', ord.subtotal || 0, ord.tax_amount || 0,
-            ord.total_amount || 0, ord.created_at || new Date(), ord.payment_type || 'cash', ord.customer_name || null,
-            ord.customer_phone || null, ord.user_id || null, ord.order_type || 'dine_in', ord.discount_amount || 0,
-            claims.vendorId, ord.restaurant_id || 1, ord.location_id || 1, ord.notes || null
-          ]);
-          uploadedOrders++;
-        }
-      }
+    const orderResult = await upsertGatewayRows(db, 'orders', incomingTables.orders, claims, scope);
+    uploaded.orders = orderResult.count;
+    accepted.orders = orderResult.ids;
+    if (orderResult.warning) warnings.orders = orderResult.warning;
+    totalAccepted += orderResult.count;
+
+    const orderIds = new Set(orderResult.ids.map((id) => cleanPositiveInt(id)).filter(Boolean));
+    const context = { orderIds };
+
+    for (const tableName of Object.keys(SYNC_GATEWAY_TABLES).filter((name) => name !== 'orders')) {
+      const result = await upsertGatewayRows(db, tableName, incomingTables[tableName], claims, scope, context);
+      uploaded[tableName] = result.count;
+      accepted[tableName] = result.ids;
+      if (result.warning) warnings[tableName] = result.warning;
+      totalAccepted += result.count;
     }
-    return res.json({ success: true, vendorId: claims.vendorId, uploadedOrders, timestamp: new Date().toISOString() });
+
+    return res.json({
+      success: true,
+      vendorId: claims.vendorId,
+      uploaded,
+      accepted,
+      warnings,
+      uploadedOrders: uploaded.orders || 0,
+      totalAccepted,
+      timestamp: new Date().toISOString()
+    });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({
+      success: false,
+      code: 'SYNC_GATEWAY_UPLOAD_FAILED',
+      error: err.message
+    });
   }
 });
 
