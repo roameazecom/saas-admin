@@ -55,10 +55,10 @@ function getDb() {
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
-function generateActivationToken(vendorId, vendorCode) {
+function generateActivationToken(vendorId, vendorCode, locationId = null) {
   const secret = getActivationTokenSecret();
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
-  const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, expiresAt })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ vendorId, vendorCode, locationId, expiresAt })).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
@@ -320,6 +320,22 @@ function normalizeActivationLocations(rows = [], vendorId) {
 
   const realNamedLocations = mapped.filter(l => !isPlaceholderOutletName(l.name));
   return realNamedLocations.length > 0 ? realNamedLocations : mapped;
+}
+
+async function fetchActiveOutletsForToken(db, vendorId) {
+  const [rows] = await db.query(
+    'SELECT id, name, is_active FROM locations WHERE vendor_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY id ASC',
+    [vendorId]
+  );
+  return Array.isArray(rows) ? rows.filter(row => row && row.id) : [];
+}
+
+function sendNoActiveOutlets(res) {
+  return res.status(409).json({
+    success: false,
+    code: 'NO_ACTIVE_OUTLETS_CONFIGURED',
+    error: 'Cannot generate POS activation token: No active outlet is configured for this vendor. Please add at least one outlet in SaaS Admin before generating token.'
+  });
 }
 
 async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) {
@@ -616,7 +632,7 @@ app.post('/api/vendors/activate', async (req, res) => {
       });
     }
 
-    const requestedLocationId = cleanPositiveInt(req.body?.location_id || req.body?.selected_location_id);
+    const requestedLocationId = cleanPositiveInt(req.body?.location_id || req.body?.selected_location_id || tokenData.locationId);
     const defaultLocation = locations.find(l => l.id === requestedLocationId || l.location_id === requestedLocationId) || locations[0];
     const defaultLocationId = defaultLocation.id;
     const defaultRestaurantId = cleanPositiveInt(defaultLocation.restaurant_id) || defaultLocationId;
@@ -759,6 +775,11 @@ app.post('/api/vendors/:id/generate-token', requireSaasAdminMiddleware, async (r
     if (!rows.length) return res.status(404).json({ error: 'Vendor not found' });
 
     const vendor = rows[0];
+    const activeOutlets = await fetchActiveOutletsForToken(db, vendor.id);
+    if (activeOutlets.length === 0) return sendNoActiveOutlets(res);
+    const requestedLocationId = cleanPositiveInt(req.body?.location_id || req.body?.selected_location_id);
+    const selectedOutlet = activeOutlets.find(outlet => Number(outlet.id) === Number(requestedLocationId)) || activeOutlets[0];
+
     let vendorCode = vendor.vendor_code;
     if (!vendorCode) {
       const sp = (vendor.slug || vendor.business_name || 'ven').replace(/[^a-z0-9]/gi, '').substring(0, 4).toUpperCase();
@@ -766,11 +787,20 @@ app.post('/api/vendors/:id/generate-token', requireSaasAdminMiddleware, async (r
       await db.query('UPDATE vendors SET vendor_code = ? WHERE id = ?', [vendorCode, vendor.id]);
     }
 
-    const token = generateActivationToken(vendor.id, vendorCode);
+    const token = generateActivationToken(vendor.id, vendorCode, selectedOutlet.id);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id}) by ${req.saasAdmin?.email || 'admin'}`);
+    await audit('GENERATE_ACTIVATION_TOKEN', `Token for "${vendor.business_name}" (#${vendor.id}) outlet "${selectedOutlet.name || selectedOutlet.id}" by ${req.saasAdmin?.email || 'admin'}`);
 
-    res.json({ success: true, token, vendor_name: vendor.business_name, vendor_code: vendorCode, expires_at: expiresAt });
+    res.json({
+      success: true,
+      token,
+      vendor_name: vendor.business_name,
+      vendor_code: vendorCode,
+      selected_location_id: selectedOutlet.id,
+      selected_location_name: selectedOutlet.name || `Outlet #${selectedOutlet.id}`,
+      active_outlet_count: activeOutlets.length,
+      expires_at: expiresAt
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -784,6 +814,14 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
       fssai, fssai_number, brand_logo_url, default_outlet_name, outlet_address
     } = req.body;
     if (!business_name || !slug) return res.status(400).json({ error: 'business_name and slug required' });
+    const initialOutletName = String(default_outlet_name || '').trim();
+    if (!initialOutletName) {
+      return res.status(400).json({
+        success: false,
+        code: 'DEFAULT_OUTLET_REQUIRED',
+        error: 'Initial Branch / Outlet Name is required before creating a POS vendor.'
+      });
+    }
 
     const vendor_code = `HP-VEN-${Date.now().toString().slice(-5)}`;
     const tenant_id = `TEN-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
@@ -800,8 +838,7 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
     const initialPassword = owner_password || crypto.randomBytes(12).toString('base64url');
     const ownerPasswordHash = hashPassword(initialPassword);
     let locationId = null;
-    const initialOutletName = String(default_outlet_name || '').trim();
-    if (initialOutletName) try {
+    try {
       const locationColumns = await getTableColumns(db, 'locations');
       const locationValues = {
         vendor_id: vendorId,
@@ -816,7 +853,13 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
         fields.map(field => locationValues[field])
       );
       locationId = locResult.insertId || 1;
-    } catch (e) {}
+    } catch (e) {
+      return res.status(500).json({
+        success: false,
+        code: 'INITIAL_OUTLET_CREATE_FAILED',
+        error: `Vendor was created, but the initial outlet could not be saved: ${e.message}`
+      });
+    }
 
     try {
       await upsertRestaurantDetails(db, vendorId, {

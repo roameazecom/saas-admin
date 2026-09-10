@@ -47,6 +47,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenOutletByVendor, setTokenOutletByVendor] = useState({});
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,6 +70,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
   // API base â€” use Vercel serverless functions (/api/*) directly
   // On localhost dev: Vite proxy forwards /api/* to localhost:5000
   const API = '';
+  const isOutletActive = (outlet) => outlet && outlet.is_active !== 0 && outlet.is_active !== false && outlet.is_active !== '0';
 
   // Load All Data
   const loadGlobalAnalytics = async () => {
@@ -194,6 +196,10 @@ export default function SaaSAdminDashboard({ onLogout }) {
     const fssai_number = formData.get('fssai_number');
     const brand_logo_url = formData.get('brand_logo_url');
     const default_outlet_name = String(formData.get('default_outlet_name') || '').trim();
+    if (!default_outlet_name) {
+      toast.error('Initial Branch / Outlet Name is required before creating a POS vendor.');
+      return;
+    }
 
     try {
       await axios.post(`${API}/api/vendors`, {
@@ -333,13 +339,33 @@ export default function SaaSAdminDashboard({ onLogout }) {
   const handleGenerateToken = async (vendor) => {
     setTokenLoading(true);
     try {
-      const res = await axios.post(`${API}/api/vendors/${vendor.id}/generate-token`);
+      let vendorOutlets = vendor?.id === selectedVendor?.id ? outlets : [];
+      if (!Array.isArray(vendorOutlets) || vendorOutlets.length === 0) {
+        const outletRes = await axios.get(`${API}/api/vendors/${vendor.id}/outlets`);
+        vendorOutlets = Array.isArray(outletRes.data) ? outletRes.data : [];
+      }
+      const activeVendorOutlets = vendorOutlets.filter(isOutletActive);
+      if (activeVendorOutlets.length === 0) {
+        toast.error('Add at least one active outlet before generating a POS setup token.');
+        setSelectedVendor(vendor);
+        setIsAddOutletOpen(true);
+        return;
+      }
+      const chosenLocationId = Number(tokenOutletByVendor[vendor.id]) || Number(activeVendorOutlets[0].id);
+      const selectedOutlet = activeVendorOutlets.find(o => Number(o.id) === chosenLocationId) || activeVendorOutlets[0];
+      const res = await axios.post(`${API}/api/vendors/${vendor.id}/generate-token`, {
+        location_id: selectedOutlet.id
+      });
       setGeneratedToken({ ...res.data, vendor_name: vendor.business_name });
       setIsTokenModalOpen(true);
       setTokenCopied(false);
-      toast.success('Activation token generated! Share it with the restaurant owner.');
+      toast.success(`Activation token generated for ${selectedOutlet.name || `Outlet #${selectedOutlet.id}`}.`);
     } catch (err) {
       const msg = err.response?.data?.error;
+      if (err.response?.data?.code === 'NO_ACTIVE_OUTLETS_CONFIGURED') {
+        setSelectedVendor(vendor);
+        setIsAddOutletOpen(true);
+      }
       toast.error(typeof msg === 'string' ? msg : msg?.message || err.message || 'Failed to generate activation token');
     } finally {
       setTokenLoading(false);
@@ -544,6 +570,12 @@ export default function SaaSAdminDashboard({ onLogout }) {
   });
 
   const filteredTickets = tickets.filter(t => ticketFilterStatus === 'all' || t.status === ticketFilterStatus);
+  const activeOutlets = outlets.filter(isOutletActive);
+  const activeOutletCount = activeOutlets.length;
+  const totalOutletCount = outlets.length;
+  const selectedTokenOutletId = selectedVendor
+    ? (tokenOutletByVendor[selectedVendor.id] || activeOutlets[0]?.id || '')
+    : '';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
@@ -947,7 +979,16 @@ export default function SaaSAdminDashboard({ onLogout }) {
                       <h3 className="font-black text-base text-amber-400 flex items-center gap-2">
                         <Building2 className="w-5 h-5" /> {selectedVendor.business_name}
                       </h3>
-                      <p className="text-xs text-slate-400">Slug: @{selectedVendor.slug} | Vendor ID #{selectedVendor.id}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <p className="text-xs text-slate-400">Slug: @{selectedVendor.slug} | Vendor ID #{selectedVendor.id}</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+                          activeOutletCount > 0
+                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                            : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                        }`}>
+                          Outlets: {activeOutletCount} Active ({totalOutletCount} Total)
+                        </span>
+                      </div>
                     </div>
 
                     {/* Direct Contact & Action Bar */}
@@ -982,14 +1023,38 @@ export default function SaaSAdminDashboard({ onLogout }) {
                         <Terminal className="w-3.5 h-3.5" /> Setup Config
                       </button>
 
-                      <button
-                        onClick={() => handleGenerateToken(selectedVendor)}
-                        disabled={tokenLoading}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/25"
-                      >
-                        <Key className="w-3.5 h-3.5" />
-                        {tokenLoading ? 'Generating...' : '🔑 Generate Setup Token'}
-                      </button>
+                      {activeOutletCount > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={selectedTokenOutletId}
+                            onChange={(e) => setTokenOutletByVendor(prev => ({ ...prev, [selectedVendor.id]: e.target.value }))}
+                            className="px-3 py-1.5 bg-slate-900 border border-slate-700 text-slate-100 text-xs font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            title="Select outlet for this setup token"
+                          >
+                            {activeOutlets.map((outlet) => (
+                              <option key={outlet.id} value={outlet.id}>
+                                {outlet.name || `Outlet #${outlet.id}`}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleGenerateToken(selectedVendor)}
+                            disabled={tokenLoading}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-600/25"
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                            {tokenLoading ? 'Generating...' : 'Generate Setup Token'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setIsAddOutletOpen(true)}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-rose-600/25"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Add Outlet Required
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1145,7 +1210,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
                     <div className="border-t border-slate-800 pt-4 space-y-3">
                       <div className="flex justify-between items-center">
                         <h4 className="font-black text-xs uppercase tracking-wider text-slate-400">
-                          Active Branch Outlets ({outlets.length})
+                          Active Branch Outlets ({activeOutletCount} active / {totalOutletCount} total)
                         </h4>
                         <button
                           onClick={() => setIsAddOutletOpen(true)}
@@ -1155,15 +1220,38 @@ export default function SaaSAdminDashboard({ onLogout }) {
                         </button>
                       </div>
 
+                      {totalOutletCount === 0 ? (
+                        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div>
+                            <h5 className="font-black text-sm text-rose-200">No outlet configured yet</h5>
+                            <p className="text-xs text-rose-200/80 mt-1">Add Noida, Gurgaon, or the correct branch before generating a POS setup token.</p>
+                          </div>
+                          <button
+                            onClick={() => setIsAddOutletOpen(true)}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Add First Outlet
+                          </button>
+                        </div>
+                      ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {outlets.map((o) => (
                           <div key={o.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 shadow-inner flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black ${
+                                isOutletActive(o) ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'
+                              }`}>
                                 <MapPin className="w-4 h-4" />
                               </div>
                               <div>
-                                <h5 className="font-bold text-xs text-white">{o.name}</h5>
+                                <h5 className="font-bold text-xs text-white flex items-center gap-2">
+                                  {o.name}
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                    isOutletActive(o) ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-500'
+                                  }`}>
+                                    {isOutletActive(o) ? 'Active' : 'Inactive'}
+                                  </span>
+                                </h5>
                                 <span className="text-[10px] text-slate-500 font-mono">Location ID #{o.id}</span>
                               </div>
                             </div>
@@ -1186,6 +1274,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
                           </div>
                         ))}
                       </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -1650,8 +1739,9 @@ export default function SaaSAdminDashboard({ onLogout }) {
               </div>
 
               <div>
-                <label className="block font-bold uppercase text-slate-400 mb-1">Default Outlet Name</label>
-                <input type="text" name="default_outlet_name" placeholder="Noida, Gurgaon, or leave blank and add outlets later" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <label className="block font-bold uppercase text-slate-400 mb-1">Initial Branch / Outlet Name <span className="text-rose-400">*</span></label>
+                <input type="text" name="default_outlet_name" required placeholder="Noida, Gurgaon, Connaught Place..." className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <p className="text-[10px] text-slate-500 mt-1">Required. POS activation tokens can only be generated after at least one real active outlet exists.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2030,7 +2120,10 @@ export default function SaaSAdminDashboard({ onLogout }) {
                 <h3 className="font-black text-lg text-emerald-400 flex items-center gap-2">
                   🔑 POS Activation Token
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">For: {generatedToken.vendor_name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  For: {generatedToken.vendor_name}
+                  {generatedToken.selected_location_name ? ` • Outlet: ${generatedToken.selected_location_name}` : ''}
+                </p>
               </div>
               <button onClick={() => setIsTokenModalOpen(false)} className="text-slate-500 hover:text-white text-xl font-black cursor-pointer">✕</button>
             </div>
@@ -2044,6 +2137,11 @@ export default function SaaSAdminDashboard({ onLogout }) {
                   <p className="text-xs text-slate-400 mt-0.5">
                     Expires: {generatedToken.expires_at ? new Date(generatedToken.expires_at).toLocaleString('en-IN') : 'N/A'}
                   </p>
+                  {generatedToken.selected_location_name && (
+                    <p className="text-xs text-emerald-300 mt-1">
+                      This token opens POS setup for outlet: <b>{generatedToken.selected_location_name}</b>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -2069,7 +2167,13 @@ export default function SaaSAdminDashboard({ onLogout }) {
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4">
                 <h4 className="text-xs font-black text-emerald-400 uppercase tracking-wider mb-3">📋 Instructions for Restaurant Owner:</h4>
                 <ol className="space-y-2">
-                  {['Install HappyPie POS on the restaurant machine and launch it.', 'The Setup Wizard will open automatically on first run.', 'Paste this token in the "Activation Token" field and click Activate.', 'Your restaurant name and first admin PIN will appear — save the PIN.', 'Click "Launch POS" to start using the system.'].map((step, i) => (
+                  {[
+                    'Install HappyPie POS on the restaurant machine and launch it.',
+                    'The Setup Wizard will open automatically on first run.',
+                    `Paste this token in the "Activation Token" field and click Activate. It is tied to ${generatedToken.selected_location_name || 'the selected outlet'}.`,
+                    'Your restaurant name and first admin PIN will appear — save the PIN.',
+                    'Click "Launch POS" to start using the system.'
+                  ].map((step, i) => (
                     <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
                       <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black flex-shrink-0 flex items-center justify-center mt-0.5">{i + 1}</span>
                       {step}
