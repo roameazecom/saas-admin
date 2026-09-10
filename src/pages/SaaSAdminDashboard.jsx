@@ -193,7 +193,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
     const gst = formData.get('gst');
     const fssai_number = formData.get('fssai_number');
     const brand_logo_url = formData.get('brand_logo_url');
-    const default_outlet_name = formData.get('default_outlet_name') || 'Main Outlet';
+    const default_outlet_name = String(formData.get('default_outlet_name') || '').trim();
 
     try {
       await axios.post(`${API}/api/vendors`, {
@@ -1651,7 +1651,7 @@ export default function SaaSAdminDashboard({ onLogout }) {
 
               <div>
                 <label className="block font-bold uppercase text-slate-400 mb-1">Default Outlet Name</label>
-                <input type="text" name="default_outlet_name" defaultValue="Main Outlet" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <input type="text" name="default_outlet_name" placeholder="Noida, Gurgaon, or leave blank and add outlets later" className="w-full border border-slate-800 rounded-xl p-2.5 text-sm font-bold bg-slate-950 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">

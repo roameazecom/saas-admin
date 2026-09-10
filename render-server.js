@@ -283,9 +283,43 @@ function sanitizeRestaurantDetails(row = {}, fallback = {}) {
 }
 
 async function fetchRestaurantDetails(db, vendorId, fallback = {}) {
+  if (fallback.location_id) {
+    const [scopedRows] = await db.query(
+      'SELECT * FROM restaurant_details WHERE vendor_id = ? AND location_id = ? ORDER BY id ASC LIMIT 1',
+      [vendorId, fallback.location_id]
+    );
+    if (scopedRows.length) return sanitizeRestaurantDetails(scopedRows[0], { ...fallback, vendor_id: vendorId });
+  }
   const [rows] = await db.query('SELECT * FROM restaurant_details WHERE vendor_id = ? ORDER BY id ASC LIMIT 1', [vendorId]);
   if (rows.length) return sanitizeRestaurantDetails(rows[0], { ...fallback, vendor_id: vendorId });
   return sanitizeRestaurantDetails({}, { ...fallback, vendor_id: vendorId });
+}
+
+function isPlaceholderOutletName(name) {
+  const normalized = String(name || '').trim().toLowerCase();
+  return normalized === 'main outlet' || normalized === 'default outlet';
+}
+
+function normalizeActivationLocations(rows = [], vendorId) {
+  const mapped = (Array.isArray(rows) ? rows : [])
+    .filter(l => l && l.is_active !== 0)
+    .map(l => ({
+      id: Number(l.id),
+      location_id: Number(l.id),
+      vendor_id: Number(vendorId),
+      restaurant_id: Number(l.restaurant_id || l.id),
+      name: String(l.name || '').trim() || `Outlet #${Number(l.id)}`,
+      address: l.address || '',
+      phone: l.phone || null,
+      city: l.city || null,
+      state: l.state || null,
+      pincode: l.pincode || null,
+      is_active: true
+    }))
+    .filter(l => Number.isInteger(l.id) && l.id > 0);
+
+  const realNamedLocations = mapped.filter(l => !isPlaceholderOutletName(l.name));
+  return realNamedLocations.length > 0 ? realNamedLocations : mapped;
 }
 
 async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) {
@@ -544,6 +578,11 @@ app.post('/api/vendors/activate', async (req, res) => {
           takeaway: true, dinein: true, billing: true, kds: true, waiter: true, customer_qr: true, inventory: true, multi_outlet: true, hr: true
         });
 
+    const cleanPositiveInt = (v) => {
+      const n = Number(v);
+      return Number.isInteger(n) && n > 0 ? n : null;
+    };
+
     let adminPin = '1234';
     let adminEmail = vendor.email || `admin.${String(vendorCode).toLowerCase().replace(/[^a-z0-9]/g, '')}@restaurant.local`;
     let locations = [];
@@ -553,43 +592,31 @@ app.post('/api/vendors/activate', async (req, res) => {
         [vendorId]
       );
       if (Array.isArray(locs) && locs.length > 0) {
-        locations = locs.map(l => ({
-          id: Number(l.id),
-          location_id: Number(l.id),
-          vendor_id: Number(vendorId),
-          restaurant_id: Number(l.restaurant_id || 1),
-          name: l.name || 'Main Outlet',
-          address: l.address || '',
-          phone: l.phone || null,
-          city: l.city || null,
-          state: l.state || null,
-          pincode: l.pincode || null,
-          is_active: l.is_active !== 0
-        }));
+        locations = normalizeActivationLocations(locs, vendorId);
       }
     } catch (lErr) { /* non-fatal */ }
 
     if (locations.length === 0) {
-      locations = [{
-        id: 1,
-        location_id: 1,
-        vendor_id: Number(vendorId),
-        restaurant_id: 1,
-        name: 'Main Outlet',
-        address: vendor.business_name || '',
-        phone: vendor.phone || null,
-        is_active: true
-      }];
+      return res.status(409).json({
+        success: false,
+        code: 'NO_ACTIVE_OUTLETS_CONFIGURED',
+        error: 'No active outlet is configured in SaaS Admin. Add Noida/Gurgaon or another outlet before POS activation.'
+      });
     }
 
-    const defaultLocationId = locations[0].id;
+    const requestedLocationId = cleanPositiveInt(req.body?.location_id || req.body?.selected_location_id);
+    const defaultLocation = locations.find(l => l.id === requestedLocationId || l.location_id === requestedLocationId) || locations[0];
+    const defaultLocationId = defaultLocation.id;
+    const defaultRestaurantId = cleanPositiveInt(defaultLocation.restaurant_id) || defaultLocationId;
 
     const restaurantDetails = await fetchRestaurantDetails(db, vendorId, {
       business_name: vendor.business_name,
       email: vendor.email,
       phone: vendor.phone,
+      restaurant_id: defaultRestaurantId,
       location_id: defaultLocationId
     });
+    const responseRestaurantId = cleanPositiveInt(restaurantDetails.restaurant_id) || defaultRestaurantId;
 
     let adminUser = {
       id: null,
@@ -694,11 +721,11 @@ app.post('/api/vendors/activate', async (req, res) => {
       admin_email: adminEmail,
       admin_pin: adminPin,
       admin_user: adminUser,
-      restaurant_id: 1,
-      selected_location_id: null,
+      restaurant_id: responseRestaurantId,
+      selected_location_id: defaultLocationId,
       location_id: defaultLocationId,
       locations,
-      restaurant_details: { ...restaurantDetails, location_id: defaultLocationId },
+      restaurant_details: { ...restaurantDetails, restaurant_id: responseRestaurantId, location_id: defaultLocationId },
       categories,
       menu_items: menuItems,
       restaurant_areas: restaurantAreas,
@@ -760,13 +787,14 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
     const vendorId = result.insertId;
     const initialPassword = owner_password || crypto.randomBytes(12).toString('base64url');
     const ownerPasswordHash = hashPassword(initialPassword);
-    let locationId = 1;
-    try {
+    let locationId = null;
+    const initialOutletName = String(default_outlet_name || '').trim();
+    if (initialOutletName) try {
       const locationColumns = await getTableColumns(db, 'locations');
       const locationValues = {
         vendor_id: vendorId,
         restaurant_id: 1,
-        name: default_outlet_name || 'Main Outlet',
+        name: initialOutletName,
         address: outlet_address || address || null,
         is_active: 1
       };
@@ -794,8 +822,8 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
         fssai_number: fssai_number || fssai,
         brand_logo_url,
         restaurant_id: 1,
-        location_id: locationId
-      }, { business_name, email, phone, location_id: locationId });
+        location_id: locationId || null
+      }, { business_name, email, phone, location_id: locationId || null });
     } catch (e) {
       console.error('Failed to create restaurant_details:', e.message);
     }
@@ -809,7 +837,7 @@ app.post('/api/vendors', requireSaasAdminMiddleware, async (req, res) => {
         role: 'admin',
         pin: '1234',
         is_active: 1,
-        location_id: locationId
+        location_id: locationId || null
       };
       const fields = Object.keys(userValues).filter(field => userColumns.has(field));
       await db.query(
