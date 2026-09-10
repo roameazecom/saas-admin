@@ -594,6 +594,18 @@ app.post('/api/vendors/activate', async (req, res) => {
       if (Array.isArray(locs) && locs.length > 0) {
         locations = normalizeActivationLocations(locs, vendorId);
       }
+      if (locations.length === 0) {
+        const [anyLocs] = await db.query(
+          'SELECT id, id AS location_id, vendor_id, restaurant_id, name, address, phone, city, state, pincode, is_active FROM locations WHERE vendor_id = ? ORDER BY id ASC',
+          [vendorId]
+        );
+        if (Array.isArray(anyLocs) && anyLocs.length > 0) {
+          try {
+            await db.query('UPDATE locations SET is_active = 1 WHERE vendor_id = ?', [vendorId]);
+          } catch (uErr) {}
+          locations = normalizeActivationLocations(anyLocs.map(l => ({ ...l, is_active: 1 })), vendorId);
+        }
+      }
     } catch (lErr) { /* non-fatal */ }
 
     if (locations.length === 0) {
@@ -954,9 +966,23 @@ app.get('/api/vendors/:id/outlets', requireSaasAdminMiddleware, async (req, res)
 
 app.post('/api/vendors/:id/outlets', requireSaasAdminMiddleware, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, address } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
-    const [r] = await getDb().query('INSERT INTO locations (vendor_id, name) VALUES (?, ?)', [req.params.id, name]);
+    const db = getDb();
+    const locationColumns = await getTableColumns(db, 'locations');
+    const locationValues = {
+      vendor_id: Number(req.params.id),
+      restaurant_id: 1,
+      name: String(name).trim(),
+      address: address || null,
+      is_active: 1
+    };
+    const fields = Object.keys(locationValues).filter(field => locationColumns.has(field));
+    const [r] = await db.query(
+      `INSERT INTO locations (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+      fields.map(field => locationValues[field])
+    );
+    await audit('CREATE_OUTLET', `Created outlet "${name}" (#${r.insertId}) for vendor #${req.params.id}`);
     res.json({ success: true, id: r.insertId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

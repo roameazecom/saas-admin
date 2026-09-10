@@ -235,6 +235,18 @@ export default async function handler(req, res) {
         if (Array.isArray(locs) && locs.length > 0) {
           locations = normalizeActivationLocations(locs, vendorId);
         }
+        if (locations.length === 0) {
+          const [anyLocs] = await db.query(
+            'SELECT id, id AS location_id, vendor_id, restaurant_id, name, address, phone, city, state, pincode, is_active FROM locations WHERE vendor_id = ? ORDER BY id ASC',
+            [vendorId]
+          );
+          if (Array.isArray(anyLocs) && anyLocs.length > 0) {
+            try {
+              await db.query('UPDATE locations SET is_active = 1 WHERE vendor_id = ?', [vendorId]);
+            } catch (uErr) {}
+            locations = normalizeActivationLocations(anyLocs.map(l => ({ ...l, is_active: 1 })), vendorId);
+          }
+        }
       } catch (lErr) {}
 
       if (locations.length === 0) {

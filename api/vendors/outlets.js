@@ -18,10 +18,16 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      const { name, vendor_id: bodyVendorId } = req.body;
-      const targetId = vendor_id || bodyVendorId;
-      const [result] = await db.query('INSERT INTO locations (name, vendor_id) VALUES (?, ?)', [String(name).trim(), targetId]);
-      return res.status(200).json({ success: true, id: result.insertId, name: String(name).trim(), vendor_id: Number(targetId) });
+      const { name, address, vendor_id: bodyVendorId } = req.body;
+      const targetId = Number(vendor_id || bodyVendorId);
+      if (!name) return res.status(400).json({ error: 'name required' });
+      const [result] = await db.query(
+        'INSERT INTO locations (name, vendor_id, restaurant_id, address, is_active) VALUES (?, ?, ?, ?, 1)',
+        [String(name).trim(), targetId, 1, address || null]
+      ).catch(async () => {
+        return db.query('INSERT INTO locations (name, vendor_id, is_active) VALUES (?, ?, 1)', [String(name).trim(), targetId]);
+      });
+      return res.status(200).json({ success: true, id: result.insertId, name: String(name).trim(), vendor_id: targetId });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
