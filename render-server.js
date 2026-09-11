@@ -423,21 +423,112 @@ app.get('/api/sync/gateway/restore', async (req, res) => {
 
   try {
     const cloudDb = getDb();
+    const vendorId = claims.vendorId;
+
+    const fetchSafeTable = async (tableName, fields, orderFields = ['id'], defaults = {}) => {
+      try {
+        return await fetchVendorRowsForActivation(cloudDb, tableName, fields, vendorId, orderFields, defaults);
+      } catch (e) {
+        return [];
+      }
+    };
+
     const [orders] = await cloudDb.query(
       'SELECT * FROM orders WHERE vendor_id = ? ORDER BY id ASC LIMIT 10000',
-      [claims.vendorId]
-    );
+      [vendorId]
+    ).catch(() => [[]]);
     const orderIds = (orders || []).map((order) => cleanPositiveInt(order.id)).filter(Boolean);
     let orderItems = [];
     if (orderIds.length > 0) {
-      const [items] = await cloudDb.query('SELECT * FROM order_items WHERE order_id IN (?) ORDER BY id ASC', [orderIds]);
+      const [items] = await cloudDb.query('SELECT * FROM order_items WHERE order_id IN (?) ORDER BY id ASC', [orderIds]).catch(() => [[]]);
       orderItems = items || [];
     }
+
+    const areas = await fetchSafeTable(
+      'restaurant_areas',
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'is_active'],
+      ['id'],
+      { is_active: 1 }
+    );
+
+    const tables = await fetchSafeTable(
+      'restaurant_tables',
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'area_id', 'table_number', 'capacity', 'status', 'is_active'],
+      ['id'],
+      { is_active: 1, status: 'available' }
+    );
+
+    const categories = await fetchSafeTable(
+      'categories',
+      ['id', 'vendor_id', 'location_id', 'name', 'type', 'is_active', 'sort_order'],
+      ['sort_order', 'id'],
+      { is_active: 1, sort_order: 0 }
+    );
+
+    let menuItems = [];
+    try {
+      const [itemRows] = await cloudDb.query(
+        'SELECT id, vendor_id, location_id, category_id, name, price, type, is_available, inventory_item_id, inventory_qty_per_unit, image_base64, image_url FROM menu_items WHERE vendor_id = ? ORDER BY id ASC',
+        [vendorId]
+      );
+      if (Array.isArray(itemRows)) menuItems = itemRows;
+    } catch (mErr) {}
+
+    const locations = await fetchLocationRowsForActivation(cloudDb, vendorId, false);
+    const restaurantDetails = await fetchRestaurantDetails(cloudDb, vendorId);
+
+    const settlements = await fetchSafeTable(
+      'checkout_settlements',
+      ['id', 'sync_uuid', 'vendor_id', 'location_id', 'order_id', 'checkout_id', 'payment_type', 'currency', 'line_gross_minor', 'line_discount_minor', 'subtotal_after_line_discount_minor', 'order_discount_minor', 'net_subtotal_minor', 'tax_minor', 'total_payable_minor', 'tendered_minor', 'change_due_minor', 'pos_session_id', 'status', 'created_by_user_id', 'created_at']
+    );
+
+    const inventoryItems = await fetchSafeTable(
+      'inventory_items',
+      ['id', 'name', 'stock_quantity', 'unit', 'min_threshold', 'red_threshold', 'excess_threshold', 'category', 'vendor_id', 'location_id']
+    );
+
+    const inventoryLogs = await fetchSafeTable(
+      'inventory_logs',
+      ['id', 'vendor_id', 'item_id', 'type', 'quantity', 'logged_by', 'notes', 'created_at']
+    );
+
+    const vendorPayments = await fetchSafeTable(
+      'vendor_payments',
+      ['id', 'vendor_id', 'supplier_name', 'bill_number', 'bill_amount', 'paid_amount', 'payment_mode', 'notes', 'date', 'created_at']
+    );
+
+    const posSessions = await fetchSafeTable(
+      'pos_sessions',
+      ['id', 'vendor_id', 'user_id', 'opened_at', 'closed_at', 'opening_cash', 'expected_cash', 'closing_cash', 'total_upi_sales', 'total_card_sales', 'total_expenses', 'status', 'notes', 'settled_by_name', 'synced']
+    );
+
     return res.json({
       success: true,
-      vendorId: claims.vendorId,
-      tables: { orders: orders || [], order_items: orderItems },
-      restored: { orders: (orders || []).length, order_items: orderItems.length },
+      vendorId: vendorId,
+      tables: {
+        orders: orders || [],
+        order_items: orderItems,
+        restaurant_areas: areas || [],
+        restaurant_tables: tables || [],
+        categories: categories || [],
+        menu_items: menuItems || [],
+        locations: locations || [],
+        restaurant_details: restaurantDetails ? [restaurantDetails] : [],
+        checkout_settlements: settlements || [],
+        inventory_items: inventoryItems || [],
+        inventory_logs: inventoryLogs || [],
+        vendor_payments: vendorPayments || [],
+        pos_sessions: posSessions || []
+      },
+      restored: {
+        orders: (orders || []).length,
+        order_items: orderItems.length,
+        restaurant_areas: (areas || []).length,
+        restaurant_tables: (tables || []).length,
+        categories: (categories || []).length,
+        menu_items: (menuItems || []).length,
+        locations: (locations || []).length
+      },
       timestamp: new Date().toISOString()
     });
   } catch (err) {
