@@ -283,7 +283,8 @@ function sanitizeRestaurantDetails(row = {}, fallback = {}) {
 }
 
 async function fetchRestaurantDetails(db, vendorId, fallback = {}) {
-  if (fallback.location_id) {
+  const columns = await getTableColumns(db, 'restaurant_details');
+  if (fallback.location_id && columns.has('location_id')) {
     const [scopedRows] = await db.query(
       'SELECT * FROM restaurant_details WHERE vendor_id = ? AND location_id = ? ORDER BY id ASC LIMIT 1',
       [vendorId, fallback.location_id]
