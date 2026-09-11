@@ -11,11 +11,23 @@ function generateActivationToken(vendorId, vendorCode, locationId = null) {
 }
 
 async function fetchActiveOutletsForToken(db, vendorId) {
+  const columns = await getTableColumns(db, 'locations');
+  const hasIsActive = columns.has('is_active');
+  const selectFields = ['id'];
+  selectFields.push(columns.has('name') ? 'name' : "CONCAT('Outlet #', id) AS name");
+  if (hasIsActive) selectFields.push('is_active');
   const [rows] = await db.query(
-    'SELECT id, name, is_active FROM locations WHERE vendor_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY id ASC',
+    `SELECT ${selectFields.join(', ')} FROM locations WHERE vendor_id = ?${hasIsActive ? ' AND (is_active = 1 OR is_active IS NULL)' : ''} ORDER BY id ASC`,
     [vendorId]
   );
-  return Array.isArray(rows) ? rows.filter(row => row && row.id) : [];
+  return Array.isArray(rows)
+    ? rows.filter(row => row && row.id).map(row => ({ ...row, is_active: hasIsActive ? row.is_active : 1 }))
+    : [];
+}
+
+async function getTableColumns(db, tableName) {
+  const [rows] = await db.query(`SHOW COLUMNS FROM ${tableName}`);
+  return new Set((rows || []).map(row => row.Field));
 }
 
 function cleanPositiveInt(value) {

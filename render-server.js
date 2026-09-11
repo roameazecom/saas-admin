@@ -323,11 +323,15 @@ function normalizeActivationLocations(rows = [], vendorId) {
 }
 
 async function fetchActiveOutletsForToken(db, vendorId) {
+  const columns = await getTableColumns(db, 'locations');
+  const hasIsActive = columns.has('is_active');
+  const selectFields = ['id', columns.has('name') ? 'name' : "CONCAT('Outlet #', id) AS name"];
+  if (hasIsActive) selectFields.push('is_active');
   const [rows] = await db.query(
-    'SELECT id, name, is_active FROM locations WHERE vendor_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY id ASC',
+    `SELECT ${selectFields.join(', ')} FROM locations WHERE vendor_id = ?${hasIsActive ? ' AND (is_active = 1 OR is_active IS NULL)' : ''} ORDER BY id ASC`,
     [vendorId]
   );
-  return Array.isArray(rows) ? rows.filter(row => row && row.id) : [];
+  return Array.isArray(rows) ? rows.filter(row => row && row.id).map(row => ({ ...row, is_active: hasIsActive ? row.is_active : 1 })) : [];
 }
 
 function sendNoActiveOutlets(res) {
@@ -336,6 +340,32 @@ function sendNoActiveOutlets(res) {
     code: 'NO_ACTIVE_OUTLETS_CONFIGURED',
     error: 'Cannot generate POS activation token: No active outlet is configured for this vendor. Please add at least one outlet in SaaS Admin before generating token.'
   });
+}
+
+async function fetchLocationRowsForActivation(db, vendorId, activeOnly = false) {
+  const columns = await getTableColumns(db, 'locations');
+  const hasIsActive = columns.has('is_active');
+  const fields = ['id', 'id AS location_id'];
+  ['vendor_id', 'restaurant_id', 'name', 'address', 'phone', 'city', 'state', 'pincode', 'is_active'].forEach((field) => {
+    if (columns.has(field)) fields.push(field);
+  });
+  const [rows] = await db.query(
+    `SELECT ${fields.join(', ')} FROM locations WHERE vendor_id = ?${activeOnly && hasIsActive ? ' AND (is_active = 1 OR is_active IS NULL)' : ''} ORDER BY id ASC`,
+    [vendorId]
+  );
+  return Array.isArray(rows) ? rows.map(row => ({ ...row, is_active: hasIsActive ? row.is_active : 1 })) : [];
+}
+
+async function fetchVendorRowsForActivation(db, tableName, fields, vendorId, orderFields = ['id'], defaults = {}) {
+  const columns = await getTableColumns(db, tableName);
+  const selectedFields = fields.filter(field => columns.has(field));
+  if (selectedFields.length === 0) return [];
+  const orderBy = orderFields.filter(field => columns.has(field)).map(field => `${field} ASC`).join(', ');
+  const [rows] = await db.query(
+    `SELECT ${selectedFields.join(', ')} FROM ${tableName} WHERE vendor_id = ?${orderBy ? ` ORDER BY ${orderBy}` : ''}`,
+    [vendorId]
+  );
+  return Array.isArray(rows) ? rows.map(row => ({ ...defaults, ...row })) : [];
 }
 
 async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) {
@@ -603,24 +633,21 @@ app.post('/api/vendors/activate', async (req, res) => {
     let adminEmail = vendor.email || `admin.${String(vendorCode).toLowerCase().replace(/[^a-z0-9]/g, '')}@restaurant.local`;
     let locations = [];
     try {
-      const [locs] = await db.query(
-        'SELECT id, id AS location_id, vendor_id, restaurant_id, name, address, phone, city, state, pincode, is_active FROM locations WHERE vendor_id = ? AND (is_active = 1 OR is_active IS NULL) ORDER BY id ASC',
-        [vendorId]
-      );
-      if (Array.isArray(locs) && locs.length > 0) {
-        locations = normalizeActivationLocations(locs, vendorId);
-      }
-      if (locations.length === 0) {
-        const [anyLocs] = await db.query(
-          'SELECT id, id AS location_id, vendor_id, restaurant_id, name, address, phone, city, state, pincode, is_active FROM locations WHERE vendor_id = ? ORDER BY id ASC',
-          [vendorId]
-        );
-        if (Array.isArray(anyLocs) && anyLocs.length > 0) {
-          try {
-            await db.query('UPDATE locations SET is_active = 1 WHERE vendor_id = ?', [vendorId]);
-          } catch (uErr) {}
-          locations = normalizeActivationLocations(anyLocs.map(l => ({ ...l, is_active: 1 })), vendorId);
+        const locs = await fetchLocationRowsForActivation(db, vendorId, true);
+        if (Array.isArray(locs) && locs.length > 0) {
+          locations = normalizeActivationLocations(locs, vendorId);
         }
+        if (locations.length === 0) {
+          const anyLocs = await fetchLocationRowsForActivation(db, vendorId, false);
+          if (Array.isArray(anyLocs) && anyLocs.length > 0) {
+            try {
+              const locationColumns = await getTableColumns(db, 'locations');
+              if (locationColumns.has('is_active')) {
+                await db.query('UPDATE locations SET is_active = 1 WHERE vendor_id = ?', [vendorId]);
+              }
+            } catch (uErr) {}
+            locations = normalizeActivationLocations(anyLocs.map(l => ({ ...l, is_active: 1 })), vendorId);
+          }
       }
     } catch (lErr) { /* non-fatal */ }
 
@@ -700,11 +727,14 @@ app.post('/api/vendors/activate', async (req, res) => {
     // Fetch master categories from SaaS Cloud TiDB
     let categories = [];
     try {
-      const [catRows] = await db.query(
-        'SELECT id, vendor_id, location_id, name, type, is_active, sort_order FROM categories WHERE vendor_id = ? ORDER BY sort_order ASC, id ASC',
-        [vendorId]
+      categories = await fetchVendorRowsForActivation(
+        db,
+        'categories',
+        ['id', 'vendor_id', 'location_id', 'name', 'type', 'is_active', 'sort_order'],
+        vendorId,
+        ['sort_order', 'id'],
+        { is_active: 1, sort_order: 0 }
       );
-      if (Array.isArray(catRows)) categories = catRows;
     } catch (cErr) {}
 
     // Fetch master menu items from SaaS Cloud TiDB
@@ -720,21 +750,27 @@ app.post('/api/vendors/activate', async (req, res) => {
     // Fetch restaurant areas from SaaS Cloud TiDB
     let restaurantAreas = [];
     try {
-      const [areaRows] = await db.query(
-        'SELECT id, vendor_id, restaurant_id, location_id, name, is_active FROM restaurant_areas WHERE vendor_id = ? ORDER BY id ASC',
-        [vendorId]
+      restaurantAreas = await fetchVendorRowsForActivation(
+        db,
+        'restaurant_areas',
+        ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'is_active'],
+        vendorId,
+        ['id'],
+        { is_active: 1 }
       );
-      if (Array.isArray(areaRows)) restaurantAreas = areaRows;
     } catch (aErr) {}
 
     // Fetch restaurant tables from SaaS Cloud TiDB
     let restaurantTables = [];
     try {
-      const [tblRows] = await db.query(
-        'SELECT id, vendor_id, restaurant_id, location_id, area_id, table_number, capacity, status, is_active FROM restaurant_tables WHERE vendor_id = ? ORDER BY id ASC',
-        [vendorId]
+      restaurantTables = await fetchVendorRowsForActivation(
+        db,
+        'restaurant_tables',
+        ['id', 'vendor_id', 'restaurant_id', 'location_id', 'area_id', 'table_number', 'capacity', 'status', 'is_active'],
+        vendorId,
+        ['id'],
+        { is_active: 1, status: 'available' }
       );
-      if (Array.isArray(tblRows)) restaurantTables = tblRows;
     } catch (tErr) {}
 
     const syncToken = generateSyncToken(vendor.id, vendorCode);
