@@ -143,6 +143,7 @@ async function getTableColumnInfo(db, tableName) {
 }
 
 const SYNC_GATEWAY_TABLES = {
+  // ── Billing / operational tables (have `synced` column on POS side) ─────────
   orders: {
     columns: ['id', 'sync_uuid', 'table_id', 'status', 'subtotal', 'tax_amount', 'total_amount', 'created_at', 'payment_type', 'customer_name', 'customer_phone', 'user_id', 'order_type', 'discount_amount', 'vendor_id', 'restaurant_id', 'location_id', 'notes'],
     updateColumns: ['sync_uuid', 'status', 'subtotal', 'tax_amount', 'total_amount', 'payment_type', 'customer_name', 'customer_phone', 'user_id', 'order_type', 'discount_amount', 'restaurant_id', 'location_id', 'notes']
@@ -186,8 +187,51 @@ const SYNC_GATEWAY_TABLES = {
   staff_advances: {
     columns: ['id', 'vendor_id', 'staff_name', 'total_advance_given', 'amount_recovered', 'created_at'],
     updateColumns: ['staff_name', 'total_advance_given', 'amount_recovered']
+  },
+
+  // ── Master / config tables (no `synced` column — upserted idempotently) ─────
+  users: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'email', 'role', 'pin_hash', 'is_active', 'created_at'],
+    updateColumns: ['name', 'email', 'role', 'is_active']
+  },
+  roles: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'permissions', 'created_at'],
+    updateColumns: ['name', 'permissions']
+  },
+  locations: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'name', 'address', 'phone', 'city', 'state', 'pincode', 'is_active'],
+    updateColumns: ['name', 'address', 'phone', 'city', 'state', 'pincode', 'is_active']
+  },
+  restaurant_details: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'brand_name', 'address', 'phone', 'email', 'gst', 'gst_number', 'fssai_number', 'tax_enabled', 'tax_percent', 'tax_name', 'tax_mode', 'brand_logo_url', 'daily_pin'],
+    updateColumns: ['name', 'brand_name', 'address', 'phone', 'email', 'gst', 'gst_number', 'fssai_number', 'tax_enabled', 'tax_percent', 'tax_name', 'tax_mode', 'brand_logo_url']
+  },
+  restaurant_areas: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'is_active'],
+    updateColumns: ['name', 'is_active']
+  },
+  restaurant_tables: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'area_id', 'table_number', 'capacity', 'status', 'is_active'],
+    updateColumns: ['area_id', 'table_number', 'capacity', 'status', 'is_active']
+  },
+  categories: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'type', 'is_active', 'sort_order'],
+    updateColumns: ['name', 'type', 'is_active', 'sort_order']
+  },
+  menu_items: {
+    columns: ['id', 'vendor_id', 'restaurant_id', 'location_id', 'category_id', 'name', 'price', 'type', 'is_available', 'inventory_item_id', 'inventory_qty_per_unit', 'image_url'],
+    updateColumns: ['category_id', 'name', 'price', 'type', 'is_available', 'inventory_item_id', 'inventory_qty_per_unit', 'image_url']
+  },
+  inventory_items: {
+    columns: ['id', 'vendor_id', 'location_id', 'name', 'stock_quantity', 'unit', 'min_threshold', 'red_threshold', 'excess_threshold', 'category'],
+    updateColumns: ['name', 'stock_quantity', 'unit', 'min_threshold', 'red_threshold', 'excess_threshold', 'category']
+  },
+  customers: {
+    columns: ['id', 'vendor_id', 'location_id', 'name', 'phone', 'email', 'points', 'created_at'],
+    updateColumns: ['name', 'email', 'points']
   }
 };
+
 
 function cleanPositiveInt(value) {
   const parsed = Number(value);
@@ -219,12 +263,32 @@ async function upsertGatewayRows(db, tableName, rows, claims, scope, context = {
   if (!insertColumns.includes('id')) return { count: 0, ids: [], warning: `${tableName.toUpperCase()}_ID_COLUMN_MISSING` };
 
   let count = 0;
+  let scopeMismatchCount = 0;
   const ids = [];
 
   for (const row of rows) {
     const rowId = cleanPositiveInt(row && row.id);
     if (!rowId) continue;
+
+    // Vendor guard — reject spoofed vendor rows
     if (row.vendor_id !== undefined && row.vendor_id !== null && Number(row.vendor_id) !== Number(claims.vendorId)) continue;
+
+    // Branch scope guard — reject rows whose restaurant_id or location_id conflicts with declared scope
+    const scopeRestaurantId = cleanPositiveInt(scope.restaurant_id);
+    const scopeLocationId   = cleanPositiveInt(scope.location_id);
+    if (scopeRestaurantId && row.restaurant_id !== undefined && row.restaurant_id !== null) {
+      if (cleanPositiveInt(row.restaurant_id) !== scopeRestaurantId) {
+        scopeMismatchCount++;
+        continue;
+      }
+    }
+    if (scopeLocationId && row.location_id !== undefined && row.location_id !== null) {
+      if (cleanPositiveInt(row.location_id) !== scopeLocationId) {
+        scopeMismatchCount++;
+        continue;
+      }
+    }
+
     if ((tableName === 'order_items' || tableName === 'checkout_settlements') && context.orderIds && !context.orderIds.has(cleanPositiveInt(row.order_id))) continue;
 
     const values = insertColumns.map((field) => gatewayValueFor(field, row, claims, scope));
@@ -240,8 +304,13 @@ async function upsertGatewayRows(db, tableName, rows, claims, scope, context = {
     ids.push(rowId);
   }
 
-  return { count, ids };
+  const result = { count, ids };
+  if (scopeMismatchCount > 0) {
+    result.warning = `ROW_SCOPE_MISMATCH_SKIPPED:${scopeMismatchCount}`;
+  }
+  return result;
 }
+
 
 function cleanRestaurantDetails(input = {}, fallback = {}) {
   const name = String(input.brand_name || input.name || fallback.business_name || '').trim();
@@ -411,6 +480,8 @@ async function upsertRestaurantDetails(db, vendorId, input = {}, fallback = {}) 
 }
 
 // ── GET /api/sync/gateway/restore (scoped historical restore for POS) ─────────
+// Optional query params: ?location_id=X&restaurant_id=Y for branch-scoped restore
+// Without params: full vendor data (backward-compatible)
 app.get('/api/sync/gateway/restore', async (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.toLowerCase().startsWith('bearer ')
@@ -425,17 +496,52 @@ app.get('/api/sync/gateway/restore', async (req, res) => {
     const cloudDb = getDb();
     const vendorId = claims.vendorId;
 
+    // Optional branch scope from query params — no default-1 fallback
+    const requestedLocationId   = cleanPositiveInt(req.query.location_id)   || null;
+    const requestedRestaurantId = cleanPositiveInt(req.query.restaurant_id) || null;
+    const isBranchScoped = !!(requestedLocationId || requestedRestaurantId);
+
+    // Helper: fetch vendor rows, optionally filtered by location/restaurant
     const fetchSafeTable = async (tableName, fields, orderFields = ['id'], defaults = {}) => {
       try {
-        return await fetchVendorRowsForActivation(cloudDb, tableName, fields, vendorId, orderFields, defaults);
+        const columns = await getTableColumns(cloudDb, tableName).catch(() => new Set());
+        const selectedFields = fields.filter((f) => columns.has(f));
+        if (selectedFields.length === 0) return [];
+
+        const orderBy = orderFields.filter((f) => columns.has(f)).map((f) => `${f} ASC`).join(', ');
+        let whereClauses = ['vendor_id = ?'];
+        const params = [vendorId];
+        if (requestedLocationId && columns.has('location_id')) {
+          whereClauses.push('location_id = ?');
+          params.push(requestedLocationId);
+        }
+        if (requestedRestaurantId && columns.has('restaurant_id')) {
+          whereClauses.push('restaurant_id = ?');
+          params.push(requestedRestaurantId);
+        }
+        const sql = `SELECT ${selectedFields.join(', ')} FROM ${tableName} WHERE ${whereClauses.join(' AND ')}${orderBy ? ` ORDER BY ${orderBy}` : ''}`;
+        const [rows] = await cloudDb.query(sql, params).catch(() => [[]]);
+        return Array.isArray(rows) ? rows.map((row) => ({ ...defaults, ...row })) : [];
       } catch (e) {
         return [];
       }
     };
 
+    // Orders — branch-scoped when location_id provided
+    const ordersWhere = ['vendor_id = ?'];
+    const ordersParams = [vendorId];
+    const ordersColumns = await getTableColumns(cloudDb, 'orders').catch(() => new Set());
+    if (requestedLocationId && ordersColumns.has('location_id')) {
+      ordersWhere.push('location_id = ?');
+      ordersParams.push(requestedLocationId);
+    }
+    if (requestedRestaurantId && ordersColumns.has('restaurant_id')) {
+      ordersWhere.push('restaurant_id = ?');
+      ordersParams.push(requestedRestaurantId);
+    }
     const [orders] = await cloudDb.query(
-      'SELECT * FROM orders WHERE vendor_id = ? ORDER BY id ASC LIMIT 10000',
-      [vendorId]
+      `SELECT * FROM orders WHERE ${ordersWhere.join(' AND ')} ORDER BY id ASC LIMIT 10000`,
+      ordersParams
     ).catch(() => [[]]);
     const orderIds = (orders || []).map((order) => cleanPositiveInt(order.id)).filter(Boolean);
     let orderItems = [];
@@ -460,22 +566,20 @@ app.get('/api/sync/gateway/restore', async (req, res) => {
 
     const categories = await fetchSafeTable(
       'categories',
-      ['id', 'vendor_id', 'location_id', 'name', 'type', 'is_active', 'sort_order'],
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'type', 'is_active', 'sort_order'],
       ['sort_order', 'id'],
       { is_active: 1, sort_order: 0 }
     );
 
-    let menuItems = [];
-    try {
-      const [itemRows] = await cloudDb.query(
-        'SELECT id, vendor_id, location_id, category_id, name, price, type, is_available, inventory_item_id, inventory_qty_per_unit, image_base64, image_url FROM menu_items WHERE vendor_id = ? ORDER BY id ASC',
-        [vendorId]
-      );
-      if (Array.isArray(itemRows)) menuItems = itemRows;
-    } catch (mErr) {}
+    const menuItems = await fetchSafeTable(
+      'menu_items',
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'category_id', 'name', 'price', 'type', 'is_available', 'inventory_item_id', 'inventory_qty_per_unit', 'image_url'],
+      ['id']
+    );
 
     const locations = await fetchLocationRowsForActivation(cloudDb, vendorId, false);
-    const restaurantDetails = await fetchRestaurantDetails(cloudDb, vendorId);
+    const restaurantDetails = await fetchRestaurantDetails(cloudDb, vendorId,
+      requestedLocationId ? { location_id: requestedLocationId, restaurant_id: requestedRestaurantId } : {});
 
     const settlements = await fetchSafeTable(
       'checkout_settlements',
@@ -502,32 +606,51 @@ app.get('/api/sync/gateway/restore', async (req, res) => {
       ['id', 'vendor_id', 'user_id', 'opened_at', 'closed_at', 'opening_cash', 'expected_cash', 'closing_cash', 'total_upi_sales', 'total_card_sales', 'total_expenses', 'status', 'notes', 'settled_by_name', 'synced']
     );
 
+    const users = await fetchSafeTable(
+      'users',
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'email', 'role', 'is_active', 'created_at']
+    );
+
+    const roles = await fetchSafeTable(
+      'roles',
+      ['id', 'vendor_id', 'restaurant_id', 'location_id', 'name', 'permissions', 'created_at']
+    );
+
     return res.json({
       success: true,
       vendorId: vendorId,
+      scope: {
+        location_id:   requestedLocationId,
+        restaurant_id: requestedRestaurantId,
+        branch_scoped: isBranchScoped
+      },
       tables: {
-        orders: orders || [],
-        order_items: orderItems,
-        restaurant_areas: areas || [],
-        restaurant_tables: tables || [],
-        categories: categories || [],
-        menu_items: menuItems || [],
-        locations: locations || [],
-        restaurant_details: restaurantDetails ? [restaurantDetails] : [],
+        orders:               orders || [],
+        order_items:          orderItems,
+        restaurant_areas:     areas || [],
+        restaurant_tables:    tables || [],
+        categories:           categories || [],
+        menu_items:           menuItems || [],
+        locations:            locations || [],
+        restaurant_details:   restaurantDetails ? [restaurantDetails] : [],
         checkout_settlements: settlements || [],
-        inventory_items: inventoryItems || [],
-        inventory_logs: inventoryLogs || [],
-        vendor_payments: vendorPayments || [],
-        pos_sessions: posSessions || []
+        inventory_items:      inventoryItems || [],
+        inventory_logs:       inventoryLogs || [],
+        vendor_payments:      vendorPayments || [],
+        pos_sessions:         posSessions || [],
+        users:                users || [],
+        roles:                roles || []
       },
       restored: {
-        orders: (orders || []).length,
-        order_items: orderItems.length,
-        restaurant_areas: (areas || []).length,
+        orders:            (orders || []).length,
+        order_items:       orderItems.length,
+        restaurant_areas:  (areas || []).length,
         restaurant_tables: (tables || []).length,
-        categories: (categories || []).length,
-        menu_items: (menuItems || []).length,
-        locations: (locations || []).length
+        categories:        (categories || []).length,
+        menu_items:        (menuItems || []).length,
+        locations:         (locations || []).length,
+        users:             (users || []).length,
+        roles:             (roles || []).length
       },
       timestamp: new Date().toISOString()
     });
@@ -535,6 +658,7 @@ app.get('/api/sync/gateway/restore', async (req, res) => {
     return res.status(500).json({ success: false, code: 'SYNC_GATEWAY_RESTORE_FAILED', error: err.message });
   }
 });
+
 
 // ── POST /api/sync/gateway (HTTPS Sync Gateway for packaged POS clients) ──────
 app.post('/api/sync/gateway', async (req, res) => {
